@@ -32,6 +32,27 @@ body {
   backdrop-filter: blur(12px);
 }
 
+#mainContent .glass {
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 18px 40px -30px rgba(14, 17, 22, 0.28);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+#mainContent .glass:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 55px -35px rgba(14, 17, 22, 0.38);
+}
+
+.followup-card {
+  transform-style: preserve-3d;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+}
+
+body.theme-dark .followup-card {
+  box-shadow: 0 16px 30px -24px rgba(15, 23, 42, 0.7);
+}
+
 .fade-in {
   animation: fade 0.6s ease both;
 }
@@ -195,6 +216,11 @@ body.theme-dark.bg-gradient-to-br {
 body.theme-dark .glass {
   background: rgba(15, 17, 26, 0.8);
   border-color: rgba(148, 163, 184, 0.15);
+}
+
+body.theme-dark #mainContent .glass {
+  border-color: rgba(148, 163, 184, 0.12);
+  box-shadow: 0 24px 50px -36px rgba(5, 8, 18, 0.85);
 }
 
 body.theme-dark .top-header {

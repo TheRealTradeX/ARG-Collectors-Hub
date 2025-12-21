@@ -202,6 +202,42 @@ export default function Home() {
 
   const handleToggleSidebar = () => setSidebarCollapsed((prev) => !prev);
   const handleToggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  const applyQuickFilter = (type) => {
+    if (type === "overdue") {
+      setNeedWorkOnly(true);
+      setDueWeekOnly(false);
+      setIncreaseOnly(false);
+      setTouchedOnly(false);
+      return;
+    }
+    if (type === "dueWeek") {
+      setNeedWorkOnly(false);
+      setDueWeekOnly(true);
+      setIncreaseOnly(false);
+      setTouchedOnly(false);
+      return;
+    }
+    if (type === "increase") {
+      setNeedWorkOnly(false);
+      setDueWeekOnly(false);
+      setIncreaseOnly(true);
+      setTouchedOnly(false);
+    }
+  };
+
+  const handleFollowUpTilt = (event) => {
+    const card = event.currentTarget;
+    const rect = card.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const rotateX = ((y / rect.height) * 2 - 1) * -4;
+    const rotateY = ((x / rect.width) * 2 - 1) * 4;
+    card.style.transform = `translateY(-2px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+  };
+
+  const resetFollowUpTilt = (event) => {
+    event.currentTarget.style.transform = "";
+  };
 
   const openMerchantModal = (merchant = null) => {
     setEditingMerchant(merchant);
@@ -684,15 +720,36 @@ export default function Home() {
             <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
               <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Follow-ups</p>
               <div className="mt-3 grid gap-3">
-                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+                <div
+                  className={`followup-card rounded-2xl border border-steel/10 bg-white/70 p-4 ${needWorkOnly ? "ring-2 ring-coral/50" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => applyQuickFilter("overdue")}
+                  onMouseMove={handleFollowUpTilt}
+                  onMouseLeave={resetFollowUpTilt}
+                >
                   <p className="text-xs text-steel/60">Overdue</p>
                   <p className="text-2xl font-semibold">{overdueCount}</p>
                 </div>
-                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+                <div
+                  className={`followup-card rounded-2xl border border-steel/10 bg-white/70 p-4 ${dueWeekOnly ? "ring-2 ring-sky/50" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => applyQuickFilter("dueWeek")}
+                  onMouseMove={handleFollowUpTilt}
+                  onMouseLeave={resetFollowUpTilt}
+                >
                   <p className="text-xs text-steel/60">Due This Week</p>
                   <p className="text-2xl font-semibold">{dueWeekCount}</p>
                 </div>
-                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+                <div
+                  className={`followup-card rounded-2xl border border-steel/10 bg-white/70 p-4 ${increaseOnly ? "ring-2 ring-emerald-300/60" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => applyQuickFilter("increase")}
+                  onMouseMove={handleFollowUpTilt}
+                  onMouseLeave={resetFollowUpTilt}
+                >
                   <p className="text-xs text-steel/60">Increase Due</p>
                   <p className="text-2xl font-semibold">{increaseCount}</p>
                 </div>
