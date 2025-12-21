@@ -462,11 +462,10 @@ export default function Home() {
         className="glass min-h-screen w-full border-b border-white/70 px-6 py-6 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:border-b-0 lg:border-r flex flex-col"
       >
         <div id="sidebarHeader" className="flex items-center gap-3">
-          <div className="sidebar-logo h-12 w-12 rounded-2xl bg-white/90 text-white grid place-items-center shadow-sm ring-1 ring-white/70">
-            <img src="/ARG Hub Logo.svg" alt="ARG Hub Logo" className="h-10 w-10 object-contain" />
+          <div className="sidebar-logo h-12 w-12 rounded-2xl bg-white/95 text-white grid place-items-center shadow-sm ring-1 ring-white/70">
+            <img src="/ARG Hub Logo.svg" alt="ARG Hub Logo" className="h-11 w-11 object-contain drop-shadow-[0_6px_12px_rgba(10,15,26,0.35)]" />
           </div>
           <div id="sidebarHeaderText">
-            <p className="text-xs uppercase tracking-[0.3em] text-steel/70">Collectors Hub</p>
             <p className="text-sm font-semibold">Collections Hub</p>
           </div>
         </div>
@@ -562,7 +561,6 @@ export default function Home() {
         <div className="top-header sticky top-0 z-20 -mx-6 border-b border-white/70 bg-white/85 px-6 pb-4 pt-5 backdrop-blur-xl md:-mx-10 md:px-10 md:pb-6 md:pt-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-steel/70">Collectors Hub</p>
               <h1 id="pageTitle" className="text-2xl font-semibold">
                 {view === "accounts"
                   ? "Accounts Overview"
