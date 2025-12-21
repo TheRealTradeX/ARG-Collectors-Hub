@@ -74,6 +74,7 @@ export default function Home() {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusEdits, setStatusEdits] = useState({});
   const [newStatusName, setNewStatusName] = useState("");
+  const [showControls, setShowControls] = useState(false);
 
   const boardRef = useRef(null);
   const topScrollRef = useRef(null);
@@ -380,6 +381,7 @@ export default function Home() {
   };
 
   const closePaymentModal = () => setShowPaymentModal(false);
+  const closeControlsModal = () => setShowControls(false);
 
   const openStatusModal = () => {
     setStatusEdits({});
@@ -543,7 +545,7 @@ export default function Home() {
             </svg>
           </button>
           <div className="sidebar-tip rounded-2xl border border-steel/10 bg-white/70 p-4 text-xs text-steel/70">
-            Tip: drag cards on the Kanban board to update status and track touches automatically.
+            Tip: drag cards on the Kanban board to update status and track work automatically.
           </div>
           <div className="sidebar-profile flex items-center gap-3 rounded-2xl border border-steel/10 bg-white/70 p-3">
             <div className="sidebar-avatar h-10 w-10 rounded-full bg-ink text-white grid place-items-center text-sm font-semibold">
@@ -581,6 +583,20 @@ export default function Home() {
                 onChange={handleImportCsv}
               />
               <button
+                id="openControls"
+                className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                onClick={() => setShowControls(true)}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M4 6h9M4 12h14M4 18h6"></path>
+                    <circle cx="17" cy="6" r="2"></circle>
+                    <circle cx="11" cy="18" r="2"></circle>
+                  </svg>
+                  Controls
+                </span>
+              </button>
+              <button
                 id="importCsv"
                 className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                 onClick={() => fileInputRef.current && fileInputRef.current.click()}
@@ -613,160 +629,29 @@ export default function Home() {
 
         {view !== "settings" && (
         <section className="mt-4 space-y-3">
-          <div className="stat-strip glass rounded-3xl px-4 py-3 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Today</p>
-                <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
-                  {touchedCount} touched
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Payments Logged</p>
-                  <p className="text-base font-semibold">{formatMoney(paymentsToday)}</p>
+          {view !== "payments" && (
+            <div className="stat-strip glass rounded-3xl px-4 py-3 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Today</p>
+                  <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+                    {touchedCount} worked
+                  </span>
                 </div>
-                <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Month Total</p>
-                  <p className="text-base font-semibold">{formatMoney(monthTotal)}</p>
+                <div className="flex flex-wrap gap-3">
+                  <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Payments Logged</p>
+                    <p className="text-base font-semibold">{formatMoney(paymentsToday)}</p>
+                  </div>
+                  <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Month Total</p>
+                    <p className="text-base font-semibold">{formatMoney(monthTotal)}</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <details className="control-rail glass rounded-3xl px-4 py-3 shadow-sm" open>
-            <summary className="control-summary">
-              <span className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Controls</span>
-              <span className="text-xs text-steel/60">Filters, monthly view, and follow-ups</span>
-            </summary>
-            <div className="control-body grid gap-4 pt-4 lg:grid-cols-[1.4fr_0.9fr_0.8fr]">
-              <div className="space-y-3 min-w-0">
-                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Filters</p>
-                <input
-                  id="searchInput"
-                  type="search"
-                  placeholder="Search merchant or client..."
-                  className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-                <div className="flex flex-wrap gap-3 text-sm text-steel/70">
-                  <label className="flex items-center gap-2">
-                    <input
-                      id="touchedToggle"
-                      type="checkbox"
-                      className="h-4 w-4 accent-accent"
-                      checked={touchedOnly}
-                      onChange={(event) => setTouchedOnly(event.target.checked)}
-                    />
-                    Show touched today
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      id="needWorkToggle"
-                      type="checkbox"
-                      className="h-4 w-4 accent-coral"
-                      checked={needWorkOnly}
-                      onChange={(event) => setNeedWorkOnly(event.target.checked)}
-                    />
-                    Follow-up due
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      id="dueWeekToggle"
-                      type="checkbox"
-                      className="h-4 w-4 accent-sky-500"
-                      checked={dueWeekOnly}
-                      onChange={(event) => setDueWeekOnly(event.target.checked)}
-                    />
-                    Due this week
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      id="increaseToggle"
-                      type="checkbox"
-                      className="h-4 w-4 accent-emerald-500"
-                      checked={increaseOnly}
-                      onChange={(event) => setIncreaseOnly(event.target.checked)}
-                    />
-                    Increase due
-                  </label>
-                  <button
-                    id="manageStatuses"
-                    className="rounded-full border border-steel/10 bg-white/80 px-3 py-1 text-xs font-semibold text-steel/70"
-                    onClick={openStatusModal}
-                  >
-                    Manage Statuses
-                  </button>
-                </div>
-                <details className="text-xs text-steel/60">
-                  <summary className="cursor-pointer font-semibold text-steel/70">CSV columns</summary>
-                  <p className="mt-2">
-                    Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
-                    Last Touched, Account Added Date.
-                  </p>
-                </details>
-              </div>
-              <div className="space-y-3 min-w-0">
-                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Monthly View</p>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <input
-                    id="monthPicker"
-                    type="month"
-                    className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
-                    value={monthKey}
-                    onChange={(event) => setMonthKey(event.target.value)}
-                  />
-                  <button
-                    id="clearStorage"
-                    className="w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm font-medium text-steel/80 sm:w-auto"
-                    onClick={resetData}
-                  >
-                    Reset Data
-                  </button>
-                </div>
-                <p className="text-xs text-steel/60">Reset clears local data so you can import a fresh CSV.</p>
-              </div>
-              <div className="space-y-3 min-w-0">
-                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Follow-ups</p>
-                <div className="grid gap-3">
-                  <div
-                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${needWorkOnly ? "ring-2 ring-coral/50" : ""}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => applyQuickFilter("overdue")}
-                    onMouseMove={handleFollowUpTilt}
-                    onMouseLeave={resetFollowUpTilt}
-                  >
-                    <p className="text-xs text-steel/60">Overdue</p>
-                    <p className="text-xl font-semibold">{overdueCount}</p>
-                  </div>
-                  <div
-                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${dueWeekOnly ? "ring-2 ring-sky/50" : ""}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => applyQuickFilter("dueWeek")}
-                    onMouseMove={handleFollowUpTilt}
-                    onMouseLeave={resetFollowUpTilt}
-                  >
-                    <p className="text-xs text-steel/60">Due This Week</p>
-                    <p className="text-xl font-semibold">{dueWeekCount}</p>
-                  </div>
-                  <div
-                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${increaseOnly ? "ring-2 ring-emerald-300/60" : ""}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => applyQuickFilter("increase")}
-                    onMouseMove={handleFollowUpTilt}
-                    onMouseLeave={resetFollowUpTilt}
-                  >
-                    <p className="text-xs text-steel/60">Increase Due</p>
-                    <p className="text-xl font-semibold">{increaseCount}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </details>
         </section>
         )}
 
@@ -795,7 +680,7 @@ export default function Home() {
                   <p className="mt-1 text-xs text-steel/60">Upcoming increase dates</p>
                 </div>
                 <div className="glass rounded-3xl p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Touched Today</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Worked Today</p>
                   <p className="mt-2 text-3xl font-semibold">{touchedCount}</p>
                   <p className="mt-1 text-xs text-steel/60">Accounts updated today</p>
                 </div>
@@ -829,7 +714,7 @@ export default function Home() {
                         <th className="py-3 pr-4">Frequency</th>
                         <th className="py-3 pr-4">Age</th>
                         <th className="py-3 pr-4">Priority</th>
-                        <th className="py-3 pr-4">Last Touch</th>
+                        <th className="py-3 pr-4">Last Worked</th>
                         <th className="py-3 pr-4">Follow-up</th>
                         <th className="py-3 pr-4">Next Due</th>
                         <th className="py-3 pr-4">Increase</th>
@@ -902,11 +787,11 @@ export default function Home() {
                                   Add
                                 </button>
                                 <button
-                                  data-action="touched"
+                                  data-action="worked"
                                   className="rounded-full border border-steel/10 px-2 py-1 text-xs"
                                   onClick={() => markTouched(merchant.id)}
                                 >
-                                  Touched
+                                  Worked
                                 </button>
                               </div>
                             </td>
@@ -998,7 +883,7 @@ export default function Home() {
                                   <p><span className="font-medium">Increase:</span> {displayDateValue(merchant.increaseDate)}</p>
                                   <p><span className="font-medium">Notes:</span> {merchant.notes || "None"}</p>
                                 </div>
-                                <div className="mt-3 rounded-2xl border border-steel/10 bg-haze px-3 py-2 text-xs">
+                                <div className="mt-3 rounded-2xl border border-steel/10 bg-white/90 px-3 py-2 text-xs text-ink shadow-sm">
                                   <p className="text-steel/70">Month total</p>
                                   <p className="text-sm font-semibold">{formatMoney(monthTotalCard)}</p>
                                 </div>
@@ -1029,14 +914,14 @@ export default function Home() {
                                     Add Payment
                                   </button>
                                   <button
-                                    data-action="touched"
+                                    data-action="worked"
                                     className="w-full rounded-2xl border border-steel/10 px-3 py-2 text-xs font-semibold"
                                     onClick={(event) => {
                                       event.stopPropagation();
                                       markTouched(merchant.id);
                                     }}
                                   >
-                                    Mark Touched
+                                    Mark Worked
                                   </button>
                                 </div>
                               </div>
@@ -1090,7 +975,7 @@ export default function Home() {
                   </div>
                   <p className="mt-3 text-xs text-steel/60">
                     Template columns: Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
-                    Last Touched, Account Added Date.
+                Last Worked, Account Added Date.
                   </p>
                 </div>
 
@@ -1149,7 +1034,7 @@ export default function Home() {
                             checked={touchedOnly}
                             onChange={(event) => setTouchedOnly(event.target.checked)}
                           />
-                          Show touched today
+                          Show worked today
                         </label>
                         <label className="flex items-center gap-2 text-sm text-steel/70">
                           <input
@@ -1297,7 +1182,7 @@ export default function Home() {
                 />
               </label>
               <label className="text-sm">
-                Last Touched
+                Last Worked
                 <input
                   name="lastTouched"
                   type="date"
@@ -1485,6 +1370,141 @@ export default function Home() {
               <button id="cancelStatusModal" type="button" className="rounded-2xl border border-steel/10 px-4 py-2 text-sm" onClick={closeStatusModal}>
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showControls && (
+        <div id="controlsModal" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="glass w-full max-w-5xl rounded-3xl p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-steel/60">Controls</p>
+                <h2 className="text-xl font-semibold">Filters, Monthly View, Follow-ups</h2>
+              </div>
+              <button className="text-xl text-steel/60" onClick={closeControlsModal} aria-label="Close controls">
+                &times;
+              </button>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_0.9fr_0.8fr]">
+              <div className="space-y-3 min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Filters</p>
+                <input
+                  type="search"
+                  placeholder="Search merchant or client..."
+                  className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+                <div className="flex flex-wrap gap-3 text-sm text-steel/70">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-accent"
+                      checked={touchedOnly}
+                      onChange={(event) => setTouchedOnly(event.target.checked)}
+                    />
+                    Show worked today
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-coral"
+                      checked={needWorkOnly}
+                      onChange={(event) => setNeedWorkOnly(event.target.checked)}
+                    />
+                    Follow-up due
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-sky-500"
+                      checked={dueWeekOnly}
+                      onChange={(event) => setDueWeekOnly(event.target.checked)}
+                    />
+                    Due this week
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-emerald-500"
+                      checked={increaseOnly}
+                      onChange={(event) => setIncreaseOnly(event.target.checked)}
+                    />
+                    Increase due
+                  </label>
+                  <button
+                    className="rounded-full border border-steel/10 bg-white/80 px-3 py-1 text-xs font-semibold text-steel/70"
+                    onClick={openStatusModal}
+                  >
+                    Manage Statuses
+                  </button>
+                </div>
+                <details className="text-xs text-steel/60">
+                  <summary className="cursor-pointer font-semibold text-steel/70">CSV columns</summary>
+                  <p className="mt-2">
+                    Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
+                    Last Worked, Account Added Date.
+                  </p>
+                </details>
+              </div>
+              <div className="space-y-3 min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Monthly View</p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <input
+                    type="month"
+                    className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
+                    value={monthKey}
+                    onChange={(event) => setMonthKey(event.target.value)}
+                  />
+                  <button
+                    className="w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm font-medium text-steel/80 sm:w-auto"
+                    onClick={resetData}
+                  >
+                    Reset Data
+                  </button>
+                </div>
+                <p className="text-xs text-steel/60">Reset clears local data so you can import a fresh CSV.</p>
+              </div>
+              <div className="space-y-3 min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Follow-ups</p>
+                <div className="grid gap-3">
+                  <div
+                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${needWorkOnly ? "ring-2 ring-coral/50" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => applyQuickFilter("overdue")}
+                    onMouseMove={handleFollowUpTilt}
+                    onMouseLeave={resetFollowUpTilt}
+                  >
+                    <p className="text-xs text-steel/60">Overdue</p>
+                    <p className="text-xl font-semibold">{overdueCount}</p>
+                  </div>
+                  <div
+                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${dueWeekOnly ? "ring-2 ring-sky/50" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => applyQuickFilter("dueWeek")}
+                    onMouseMove={handleFollowUpTilt}
+                    onMouseLeave={resetFollowUpTilt}
+                  >
+                    <p className="text-xs text-steel/60">Due This Week</p>
+                    <p className="text-xl font-semibold">{dueWeekCount}</p>
+                  </div>
+                  <div
+                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${increaseOnly ? "ring-2 ring-emerald-300/60" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => applyQuickFilter("increase")}
+                    onMouseMove={handleFollowUpTilt}
+                    onMouseLeave={resetFollowUpTilt}
+                  >
+                    <p className="text-xs text-steel/60">Increase Due</p>
+                    <p className="text-xl font-semibold">{increaseCount}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

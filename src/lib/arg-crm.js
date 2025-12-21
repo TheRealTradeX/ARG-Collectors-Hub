@@ -48,6 +48,7 @@ const HEADER_KEY_MAP = {
   "account added date": "accountAddedDate",
   "added date": "accountAddedDate",
   "last touched": "lastTouched",
+  "last worked": "lastTouched",
   "last contact": "lastTouched",
   "last activity": "lastTouched",
 };
@@ -426,7 +427,7 @@ const exportTemplateCsv = () => {
     "Increase Date",
     "Notes",
     "Account Age Days",
-    "Last Touched",
+    "Last Worked",
     "Account Added Date",
   ];
   return `${headers.join(",")}\n`;
@@ -445,7 +446,7 @@ const exportCsvData = (merchants, monthKey) => {
     "Notes",
     "Account Added Date",
     "Account Age Days",
-    "Last Touched",
+    "Last Worked",
     "Next Follow Up",
     "Next Due",
     "Follow-up Status",
