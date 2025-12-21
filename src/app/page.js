@@ -612,28 +612,36 @@ export default function Home() {
         </div>
 
         {view !== "settings" && (
-        <section className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_1fr_1fr_1fr]">
-            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
-              <div className="flex items-center justify-between">
-                <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Today</p>
+        <section className="mt-4 space-y-3">
+          <div className="stat-strip glass rounded-3xl px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Today</p>
                 <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
                   {touchedCount} touched
                 </span>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4 min-w-0">
-                  <p className="text-xs text-steel/60">Payments Logged</p>
-                  <p className="text-xl font-semibold sm:text-2xl break-words">{formatMoney(paymentsToday)}</p>
+              <div className="flex flex-wrap gap-3">
+                <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Payments Logged</p>
+                  <p className="text-base font-semibold">{formatMoney(paymentsToday)}</p>
                 </div>
-                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4 min-w-0">
-                  <p className="text-xs text-steel/60">Month Total</p>
-                  <p className="text-xl font-semibold sm:text-2xl break-words">{formatMoney(monthTotal)}</p>
+                <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
+                  <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Month Total</p>
+                  <p className="text-base font-semibold">{formatMoney(monthTotal)}</p>
                 </div>
               </div>
             </div>
-            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
-              <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Filters</p>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
+          </div>
+
+          <details className="control-rail glass rounded-3xl px-4 py-3 shadow-sm" open>
+            <summary className="control-summary">
+              <span className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Controls</span>
+              <span className="text-xs text-steel/60">Filters, monthly view, and follow-ups</span>
+            </summary>
+            <div className="control-body grid gap-4 pt-4 lg:grid-cols-[1.4fr_0.9fr_0.8fr]">
+              <div className="space-y-3 min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Filters</p>
                 <input
                   id="searchInput"
                   type="search"
@@ -642,118 +650,124 @@ export default function Home() {
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
-                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
-                  <input
-                    id="touchedToggle"
-                    type="checkbox"
-                    className="h-4 w-4 accent-accent"
-                    checked={touchedOnly}
-                    onChange={(event) => setTouchedOnly(event.target.checked)}
-                  />
-                  Show touched today
-                </label>
-                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
-                  <input
-                    id="needWorkToggle"
-                    type="checkbox"
-                    className="h-4 w-4 accent-coral"
-                    checked={needWorkOnly}
-                    onChange={(event) => setNeedWorkOnly(event.target.checked)}
-                  />
-                  Follow-up due
-                </label>
-                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
-                  <input
-                    id="dueWeekToggle"
-                    type="checkbox"
-                    className="h-4 w-4 accent-sky-500"
-                    checked={dueWeekOnly}
-                    onChange={(event) => setDueWeekOnly(event.target.checked)}
-                  />
-                  Due this week
-                </label>
-                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
-                  <input
-                    id="increaseToggle"
-                    type="checkbox"
-                    className="h-4 w-4 accent-emerald-500"
-                    checked={increaseOnly}
-                    onChange={(event) => setIncreaseOnly(event.target.checked)}
-                  />
-                  Increase due
-                </label>
-                <button
-                  id="manageStatuses"
-                  className="rounded-full border border-steel/10 bg-white px-4 py-2 text-xs font-semibold text-steel/70"
-                  onClick={openStatusModal}
-                >
-                  Manage Statuses
-                </button>
-              </div>
-              <p className="mt-3 text-xs text-steel/60">
-                CSV columns: Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
-                Last Touched, Account Added Date.
-              </p>
-            </div>
-            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
-              <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Monthly View</p>
-              <div className="mt-3 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                <input
-                  id="monthPicker"
-                  type="month"
-                  className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
-                  value={monthKey}
-                  onChange={(event) => setMonthKey(event.target.value)}
-                />
-                <button
-                  id="clearStorage"
-                  className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm font-medium text-steel/80 sm:w-auto"
-                  onClick={resetData}
-                >
-                  Reset Data
-                </button>
-              </div>
-              <p className="mt-3 text-xs text-steel/60">Reset clears local data so you can import a fresh CSV.</p>
-            </div>
-            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
-              <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Follow-ups</p>
-              <div className="mt-3 grid gap-3">
-                <div
-                  className={`followup-card rounded-2xl border border-steel/10 bg-white/70 p-4 ${needWorkOnly ? "ring-2 ring-coral/50" : ""}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => applyQuickFilter("overdue")}
-                  onMouseMove={handleFollowUpTilt}
-                  onMouseLeave={resetFollowUpTilt}
-                >
-                  <p className="text-xs text-steel/60">Overdue</p>
-                  <p className="text-2xl font-semibold">{overdueCount}</p>
+                <div className="flex flex-wrap gap-3 text-sm text-steel/70">
+                  <label className="flex items-center gap-2">
+                    <input
+                      id="touchedToggle"
+                      type="checkbox"
+                      className="h-4 w-4 accent-accent"
+                      checked={touchedOnly}
+                      onChange={(event) => setTouchedOnly(event.target.checked)}
+                    />
+                    Show touched today
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      id="needWorkToggle"
+                      type="checkbox"
+                      className="h-4 w-4 accent-coral"
+                      checked={needWorkOnly}
+                      onChange={(event) => setNeedWorkOnly(event.target.checked)}
+                    />
+                    Follow-up due
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      id="dueWeekToggle"
+                      type="checkbox"
+                      className="h-4 w-4 accent-sky-500"
+                      checked={dueWeekOnly}
+                      onChange={(event) => setDueWeekOnly(event.target.checked)}
+                    />
+                    Due this week
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      id="increaseToggle"
+                      type="checkbox"
+                      className="h-4 w-4 accent-emerald-500"
+                      checked={increaseOnly}
+                      onChange={(event) => setIncreaseOnly(event.target.checked)}
+                    />
+                    Increase due
+                  </label>
+                  <button
+                    id="manageStatuses"
+                    className="rounded-full border border-steel/10 bg-white/80 px-3 py-1 text-xs font-semibold text-steel/70"
+                    onClick={openStatusModal}
+                  >
+                    Manage Statuses
+                  </button>
                 </div>
-                <div
-                  className={`followup-card rounded-2xl border border-steel/10 bg-white/70 p-4 ${dueWeekOnly ? "ring-2 ring-sky/50" : ""}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => applyQuickFilter("dueWeek")}
-                  onMouseMove={handleFollowUpTilt}
-                  onMouseLeave={resetFollowUpTilt}
-                >
-                  <p className="text-xs text-steel/60">Due This Week</p>
-                  <p className="text-2xl font-semibold">{dueWeekCount}</p>
+                <details className="text-xs text-steel/60">
+                  <summary className="cursor-pointer font-semibold text-steel/70">CSV columns</summary>
+                  <p className="mt-2">
+                    Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
+                    Last Touched, Account Added Date.
+                  </p>
+                </details>
+              </div>
+              <div className="space-y-3 min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Monthly View</p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <input
+                    id="monthPicker"
+                    type="month"
+                    className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
+                    value={monthKey}
+                    onChange={(event) => setMonthKey(event.target.value)}
+                  />
+                  <button
+                    id="clearStorage"
+                    className="w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm font-medium text-steel/80 sm:w-auto"
+                    onClick={resetData}
+                  >
+                    Reset Data
+                  </button>
                 </div>
-                <div
-                  className={`followup-card rounded-2xl border border-steel/10 bg-white/70 p-4 ${increaseOnly ? "ring-2 ring-emerald-300/60" : ""}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => applyQuickFilter("increase")}
-                  onMouseMove={handleFollowUpTilt}
-                  onMouseLeave={resetFollowUpTilt}
-                >
-                  <p className="text-xs text-steel/60">Increase Due</p>
-                  <p className="text-2xl font-semibold">{increaseCount}</p>
+                <p className="text-xs text-steel/60">Reset clears local data so you can import a fresh CSV.</p>
+              </div>
+              <div className="space-y-3 min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Follow-ups</p>
+                <div className="grid gap-3">
+                  <div
+                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${needWorkOnly ? "ring-2 ring-coral/50" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => applyQuickFilter("overdue")}
+                    onMouseMove={handleFollowUpTilt}
+                    onMouseLeave={resetFollowUpTilt}
+                  >
+                    <p className="text-xs text-steel/60">Overdue</p>
+                    <p className="text-xl font-semibold">{overdueCount}</p>
+                  </div>
+                  <div
+                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${dueWeekOnly ? "ring-2 ring-sky/50" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => applyQuickFilter("dueWeek")}
+                    onMouseMove={handleFollowUpTilt}
+                    onMouseLeave={resetFollowUpTilt}
+                  >
+                    <p className="text-xs text-steel/60">Due This Week</p>
+                    <p className="text-xl font-semibold">{dueWeekCount}</p>
+                  </div>
+                  <div
+                    className={`followup-card rounded-2xl border border-steel/10 bg-white/70 px-4 py-3 ${increaseOnly ? "ring-2 ring-emerald-300/60" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => applyQuickFilter("increase")}
+                    onMouseMove={handleFollowUpTilt}
+                    onMouseLeave={resetFollowUpTilt}
+                  >
+                    <p className="text-xs text-steel/60">Increase Due</p>
+                    <p className="text-xl font-semibold">{increaseCount}</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </section>
+          </details>
+        </section>
         )}
 
         <main className="mt-6">
