@@ -129,6 +129,30 @@ body.theme-dark .followup-card {
   background: #05070b;
 }
 
+#opportunityScrollTop {
+  scrollbar-width: thin;
+  scrollbar-color: #0e1116 rgba(15, 18, 24, 0.12);
+}
+
+#opportunityScrollTop::-webkit-scrollbar {
+  height: 8px;
+}
+
+#opportunityScrollTop::-webkit-scrollbar-track {
+  background: rgba(15, 18, 24, 0.08);
+  border-radius: 999px;
+}
+
+#opportunityScrollTop::-webkit-scrollbar-thumb {
+  background: #0e1116;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+#opportunityScrollTop::-webkit-scrollbar-thumb:hover {
+  background: #05070b;
+}
+
 body.theme-dark .kanban-scroll-rail {
   background: rgba(15, 17, 26, 0.86);
   border-color: rgba(148, 163, 184, 0.18);
@@ -140,6 +164,15 @@ body.theme-dark #kanbanScrollTop::-webkit-scrollbar-track {
 }
 
 body.theme-dark #kanbanScrollTop::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border: 2px solid rgba(15, 23, 42, 0.5);
+}
+
+body.theme-dark #opportunityScrollTop::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.08);
+}
+
+body.theme-dark #opportunityScrollTop::-webkit-scrollbar-thumb {
   background: #e2e8f0;
   border: 2px solid rgba(15, 23, 42, 0.5);
 }
@@ -417,5 +450,13 @@ body.theme-dark button.rounded-full:hover {
 }
 
 #kanbanScrollBottom {
+  scrollbar-width: none;
+}
+
+#opportunityScrollBottom::-webkit-scrollbar {
+  height: 0;
+}
+
+#opportunityScrollBottom {
   scrollbar-width: none;
 }

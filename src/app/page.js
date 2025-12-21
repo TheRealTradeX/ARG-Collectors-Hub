@@ -89,6 +89,9 @@ export default function Home() {
   const topScrollRef = useRef(null);
   const topScrollInnerRef = useRef(null);
   const bottomScrollRef = useRef(null);
+  const opportunityTopScrollRef = useRef(null);
+  const opportunityTopScrollInnerRef = useRef(null);
+  const opportunityBottomScrollRef = useRef(null);
   const isScrollSyncingRef = useRef(false);
   const fileInputRef = useRef(null);
 
@@ -162,6 +165,32 @@ export default function Home() {
     topEl.scrollLeft = bottomEl.scrollLeft;
   };
 
+  const handleOpportunityTopScroll = () => {
+    if (view !== "opportunities") return;
+    if (isScrollSyncingRef.current) {
+      isScrollSyncingRef.current = false;
+      return;
+    }
+    const topEl = opportunityTopScrollRef.current;
+    const bottomEl = opportunityBottomScrollRef.current;
+    if (!topEl || !bottomEl) return;
+    isScrollSyncingRef.current = true;
+    bottomEl.scrollLeft = topEl.scrollLeft;
+  };
+
+  const handleOpportunityBottomScroll = () => {
+    if (view !== "opportunities") return;
+    if (isScrollSyncingRef.current) {
+      isScrollSyncingRef.current = false;
+      return;
+    }
+    const topEl = opportunityTopScrollRef.current;
+    const bottomEl = opportunityBottomScrollRef.current;
+    if (!topEl || !bottomEl) return;
+    isScrollSyncingRef.current = true;
+    topEl.scrollLeft = bottomEl.scrollLeft;
+  };
+
   function updateKanbanScroll() {
     if (view !== "payments") return;
     const topInner = topScrollInnerRef.current;
@@ -173,6 +202,15 @@ export default function Home() {
     topScrollRef.current.scrollLeft = bottomEl.scrollLeft;
   }
 
+  function updateOpportunityScroll() {
+    if (view !== "opportunities") return;
+    const topInner = opportunityTopScrollInnerRef.current;
+    const bottomEl = opportunityBottomScrollRef.current;
+    if (!topInner || !bottomEl) return;
+    topInner.style.width = `${bottomEl.scrollWidth}px`;
+    opportunityTopScrollRef.current.scrollLeft = bottomEl.scrollLeft;
+  }
+
   useEffect(() => {
     if (view !== "payments") return;
     const raf = requestAnimationFrame(updateKanbanScroll);
@@ -180,7 +218,19 @@ export default function Home() {
   }, [merchants, statuses, view, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, priorityFilters]);
 
   useEffect(() => {
+    if (view !== "opportunities") return;
+    const raf = requestAnimationFrame(updateOpportunityScroll);
+    return () => cancelAnimationFrame(raf);
+  }, [view, opportunities]);
+
+  useEffect(() => {
     const handleResize = () => updateKanbanScroll();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [view]);
+
+  useEffect(() => {
+    const handleResize = () => updateOpportunityScroll();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [view]);
@@ -951,7 +1001,20 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-5 overflow-x-auto pb-4">
+              <div
+                id="opportunityScrollTop"
+                ref={opportunityTopScrollRef}
+                onScroll={handleOpportunityTopScroll}
+                className="mt-4 overflow-x-auto pb-2"
+              >
+                <div ref={opportunityTopScrollInnerRef} className="h-2 w-full"></div>
+              </div>
+              <div
+                id="opportunityScrollBottom"
+                className="mt-3 overflow-x-auto pb-4"
+                ref={opportunityBottomScrollRef}
+                onScroll={handleOpportunityBottomScroll}
+              >
                 <div className="grid auto-cols-[280px] grid-flow-col gap-4">
                   {OPPORTUNITY_STAGES.map((stage) => (
                     <div key={stage} className="glass rounded-3xl p-4 shadow-sm">
