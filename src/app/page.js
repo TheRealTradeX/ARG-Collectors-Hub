@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_STATUSES,
+  OPPORTUNITY_STAGES,
   currentMonthKey,
   displayDateValue,
   ensureUnsortedStatus,
@@ -14,8 +15,11 @@ import {
   getFollowUpStatus,
   getIncreaseStatus,
   getMonthTotal,
+  getMonthlyProjectionTotals,
   getNextDueDate,
   getNextFollowUpDate,
+  getOpportunityConfidence,
+  getOpportunityForecastTotal,
   getPaymentsToday,
   getPriorityBucket,
   getPriorityLabel,
@@ -54,6 +58,7 @@ const downloadBlob = (content, filename) => {
 export default function Home() {
   const [merchants, setMerchants] = useState([]);
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES.slice());
+  const [opportunities, setOpportunities] = useState([]);
   const [view, setView] = useState("accounts");
   const [search, setSearch] = useState("");
   const [touchedOnly, setTouchedOnly] = useState(false);
@@ -67,6 +72,8 @@ export default function Home() {
 
   const [showMerchantModal, setShowMerchantModal] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState(null);
+  const [showOpportunityModal, setShowOpportunityModal] = useState(false);
+  const [editingOpportunity, setEditingOpportunity] = useState(null);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMerchantId, setPaymentMerchantId] = useState("");
@@ -93,15 +100,17 @@ export default function Home() {
       const mergedStatuses = ensureUnsortedStatus(Array.from(new Set(savedStatuses.concat(merchantStatuses))));
       setMerchants(saved.merchants);
       setStatuses(mergedStatuses);
+      setOpportunities(saved.opportunities || []);
       return;
     }
     setMerchants([]);
     setStatuses(ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
+    setOpportunities([]);
   }, []);
 
   useEffect(() => {
-    persistState(merchants, statuses);
-  }, [merchants, statuses]);
+    persistState(merchants, statuses, opportunities);
+  }, [merchants, statuses, opportunities]);
 
   useEffect(() => {
     const collapsed = loadSidebarState();
@@ -208,6 +217,22 @@ export default function Home() {
     () => merchants.filter((merchant) => Boolean(getIncreaseStatus(merchant))).length,
     [merchants]
   );
+  const projectionTotals = useMemo(() => getMonthlyProjectionTotals(merchants, monthKey), [merchants, monthKey]);
+  const opportunityForecast = useMemo(
+    () => getOpportunityForecastTotal(opportunities),
+    [opportunities]
+  );
+  const opportunitiesByStage = useMemo(() => {
+    const grouped = {};
+    OPPORTUNITY_STAGES.forEach((stage) => {
+      grouped[stage] = [];
+    });
+    opportunities.forEach((opportunity) => {
+      const stage = OPPORTUNITY_STAGES.includes(opportunity.stage) ? opportunity.stage : OPPORTUNITY_STAGES[0];
+      grouped[stage].push(opportunity);
+    });
+    return grouped;
+  }, [opportunities]);
 
   const handleToggleSidebar = () => setSidebarCollapsed((prev) => !prev);
   const handleToggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
@@ -256,6 +281,99 @@ export default function Home() {
   const closeMerchantModal = () => {
     setEditingMerchant(null);
     setShowMerchantModal(false);
+  };
+
+  const openOpportunityModal = (opportunity = null) => {
+    setEditingOpportunity(opportunity);
+    setShowOpportunityModal(true);
+  };
+
+  const closeOpportunityModal = () => {
+    setEditingOpportunity(null);
+    setShowOpportunityModal(false);
+  };
+
+  const upsertOpportunity = (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    const payload = {
+      id: formData.get("opportunityId") || "",
+      merchant: String(formData.get("merchantName") || "").trim(),
+      client: String(formData.get("clientName") || "").trim(),
+      amount: String(formData.get("amount") || "").trim(),
+      type: String(formData.get("type") || "").trim(),
+      frequency: normalizeFrequency(String(formData.get("frequency") || "").trim()),
+      startDate: String(formData.get("startDate") || "").trim(),
+      expectedCloseDate: String(formData.get("expectedCloseDate") || "").trim(),
+      stage: String(formData.get("stage") || "").trim() || OPPORTUNITY_STAGES[0],
+      paymentStatus: String(formData.get("paymentStatus") || "").trim(),
+      notes: String(formData.get("notes") || "").trim(),
+    };
+
+    if (!payload.merchant) return;
+
+    setOpportunities((prev) => {
+      const existingIndex = prev.findIndex((item) => item.id === payload.id);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = { ...updated[existingIndex], ...payload };
+        return updated;
+      }
+      return [
+        ...prev,
+        {
+          ...payload,
+          id: createId(),
+          createdDate: todayKey(),
+        },
+      ];
+    });
+
+    closeOpportunityModal();
+  };
+
+  const deleteOpportunity = (opportunityId) => {
+    const opportunity = opportunities.find((item) => item.id === opportunityId);
+    if (!opportunity) return;
+    if (!window.confirm(`Delete opportunity for ${opportunity.merchant}?`)) return;
+    setOpportunities((prev) => prev.filter((item) => item.id !== opportunityId));
+  };
+
+  const updateOpportunityStage = (opportunityId, stage) => {
+    setOpportunities((prev) =>
+      prev.map((opportunity) => (opportunity.id === opportunityId ? { ...opportunity, stage } : opportunity))
+    );
+  };
+
+  const convertOpportunityToAccount = (opportunity) => {
+    setMerchants((prev) => [
+      ...prev,
+      {
+        id: createId(),
+        merchant: opportunity.merchant,
+        client: opportunity.client,
+        startDate: opportunity.startDate || "",
+        amount: opportunity.amount || "",
+        type: opportunity.type || "",
+        frequency: normalizeFrequency(opportunity.frequency || ""),
+        increaseDate: "",
+        status: opportunity.paymentStatus || "Unsorted",
+        notes: opportunity.notes ? `Converted from opportunity: ${opportunity.notes}` : "Converted from opportunity",
+        addedDate: todayKey(),
+        lastTouched: todayKey(),
+        payments: [],
+      },
+    ]);
+
+    setStatuses((prev) =>
+      ensureUnsortedStatus(
+        prev.includes(opportunity.paymentStatus) || !opportunity.paymentStatus
+          ? [...prev]
+          : [...prev, opportunity.paymentStatus]
+      )
+    );
+    setOpportunities((prev) => prev.filter((item) => item.id !== opportunity.id));
   };
 
   const upsertMerchant = (event) => {
@@ -379,6 +497,7 @@ export default function Home() {
     if (!window.confirm("Reset local data and clear imported accounts?")) return;
     setMerchants([]);
     setStatuses(ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
+    setOpportunities([]);
   };
 
   const openPaymentModal = (merchant) => {
@@ -493,6 +612,17 @@ export default function Home() {
               ),
             },
             {
+              key: "opportunities",
+              label: "Opportunities",
+              icon: (
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 3v18"></path>
+                  <path d="M5 12h14"></path>
+                  <path d="M6.5 6.5l3 3-3 3"></path>
+                </svg>
+              ),
+            },
+            {
               key: "payments",
               label: "Payments",
               icon: (
@@ -572,73 +702,87 @@ export default function Home() {
         <div className="top-header sticky top-0 z-20 -mx-6 border-b border-white/70 bg-white/85 px-6 pb-4 pt-5 backdrop-blur-xl md:-mx-10 md:px-10 md:pb-6 md:pt-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 id="pageTitle" className="text-2xl font-semibold">
-                {view === "accounts"
-                  ? "Accounts Overview"
-                  : view === "dashboard"
-                  ? "Dashboard Overview"
-                  : view === "payments"
+                <h1 id="pageTitle" className="text-2xl font-semibold">
+                  {view === "accounts"
+                    ? "Accounts Overview"
+                    : view === "opportunities"
+                    ? "Opportunities Pipeline"
+                    : view === "dashboard"
+                    ? "Dashboard Overview"
+                    : view === "payments"
                   ? "Payments Overview"
                   : "Settings"}
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <input
-                id="csvInput"
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={handleImportCsv}
-              />
-              <button
-                id="openControls"
-                className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                onClick={() => setShowControls(true)}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="M4 6h9M4 12h14M4 18h6"></path>
-                    <circle cx="17" cy="6" r="2"></circle>
-                    <circle cx="11" cy="18" r="2"></circle>
-                  </svg>
-                  Controls
-                </span>
-              </button>
-              <button
-                id="importCsv"
-                className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
-              >
-                Import CSV
-              </button>
-              <button
-                data-action="toggleSidebar"
-                className="hidden"
-                aria-hidden="true"
-                tabIndex={-1}
-              />
-              <button
-                id="exportCsv"
-                className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                onClick={handleExportCsv}
-              >
-                Export
-              </button>
-              <button
-                id="addMerchant"
-                className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
-                onClick={() => openMerchantModal()}
-              >
-                Add Merchant
-              </button>
+              {(view === "accounts" || view === "payments") && (
+                <>
+                  <input
+                    id="csvInput"
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={handleImportCsv}
+                  />
+                  <button
+                    id="openControls"
+                    className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    onClick={() => setShowControls(true)}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M4 6h9M4 12h14M4 18h6"></path>
+                        <circle cx="17" cy="6" r="2"></circle>
+                        <circle cx="11" cy="18" r="2"></circle>
+                      </svg>
+                      Controls
+                    </span>
+                  </button>
+                  <button
+                    id="importCsv"
+                    className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                  >
+                    Import CSV
+                  </button>
+                  <button
+                    data-action="toggleSidebar"
+                    className="hidden"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                  />
+                  <button
+                    id="exportCsv"
+                    className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    onClick={handleExportCsv}
+                  >
+                    Export
+                  </button>
+                  <button
+                    id="addMerchant"
+                    className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
+                    onClick={() => openMerchantModal()}
+                  >
+                    Add Merchant
+                  </button>
+                </>
+              )}
+              {view === "opportunities" && (
+                <button
+                  id="addOpportunity"
+                  className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
+                  onClick={() => openOpportunityModal()}
+                >
+                  Add Opportunity
+                </button>
+              )}
             </div>
           </header>
         </div>
 
-        {view !== "settings" && (
+        {view === "accounts" && (
         <section className="mt-4 space-y-3">
-          {view !== "payments" && (
             <div className="stat-strip glass rounded-3xl px-4 py-3 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -659,44 +803,227 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          )}
-
         </section>
         )}
 
         <main className="mt-6">
           {view === "dashboard" && (
             <section id="dashboardView">
-              <div className="grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-4 lg:grid-cols-4">
                 <div className="glass rounded-3xl p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Accounts</p>
-                  <p className="mt-2 text-3xl font-semibold">{merchants.length}</p>
-                  <p className="mt-1 text-xs text-steel/60">Total tracked merchants</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Expected Cash-In</p>
+                  <p className="mt-2 text-3xl font-semibold">{formatMoney(projectionTotals.expected)}</p>
+                  <p className="mt-1 text-xs text-steel/60">Active payment plans</p>
                 </div>
                 <div className="glass rounded-3xl p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Follow-ups</p>
-                  <p className="mt-2 text-3xl font-semibold">{overdueCount}</p>
-                  <p className="mt-1 text-xs text-steel/60">Overdue accounts</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">At-Risk</p>
+                  <p className="mt-2 text-3xl font-semibold">{formatMoney(projectionTotals.atRisk)}</p>
+                  <p className="mt-1 text-xs text-steel/60">Defaulted accounts this month</p>
                 </div>
                 <div className="glass rounded-3xl p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Due This Week</p>
-                  <p className="mt-2 text-3xl font-semibold">{dueWeekCount}</p>
-                  <p className="mt-1 text-xs text-steel/60">Scheduled payments</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Pipeline Forecast</p>
+                  <p className="mt-2 text-3xl font-semibold">{formatMoney(opportunityForecast)}</p>
+                  <p className="mt-1 text-xs text-steel/60">Weighted opportunity value</p>
                 </div>
                 <div className="glass rounded-3xl p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Increase Due</p>
-                  <p className="mt-2 text-3xl font-semibold">{increaseCount}</p>
-                  <p className="mt-1 text-xs text-steel/60">Upcoming increase dates</p>
-                </div>
-                <div className="glass rounded-3xl p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Worked Today</p>
-                  <p className="mt-2 text-3xl font-semibold">{touchedCount}</p>
-                  <p className="mt-1 text-xs text-steel/60">Accounts updated today</p>
-                </div>
-                <div className="glass rounded-3xl p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Month Total</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Collected</p>
                   <p className="mt-2 text-3xl font-semibold">{formatMoney(monthTotal)}</p>
-                  <p className="mt-1 text-xs text-steel/60">Logged payments</p>
+                  <p className="mt-1 text-xs text-steel/60">Payments logged</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Why This Month Moves</p>
+                      <h2 className="mt-2 text-lg font-semibold">Revenue Drivers</h2>
+                    </div>
+                    <span className="rounded-full bg-ink/5 px-3 py-1 text-xs text-steel/70">
+                      Projected: {formatMoney(projectionTotals.expected + projectionTotals.atRisk)}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 text-sm text-steel/70">
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Settled accounts removed</span>
+                      <span className="font-semibold text-ink">-{formatMoney(projectionTotals.settledLoss)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Defaulted accounts at risk</span>
+                      <span className="font-semibold text-ink">-{formatMoney(projectionTotals.defaultedLoss)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Active payers</span>
+                      <span className="font-semibold text-ink">{projectionTotals.activeCount}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Portfolio Health</p>
+                  <h2 className="mt-2 text-lg font-semibold">Workload + Risk</h2>
+                  <div className="mt-4 grid gap-3 text-sm text-steel/70">
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Overdue follow-ups</span>
+                      <span className="font-semibold text-ink">{overdueCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Due this week</span>
+                      <span className="font-semibold text-ink">{dueWeekCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Defaulted accounts</span>
+                      <span className="font-semibold text-ink">{projectionTotals.defaultedCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Settled accounts</span>
+                      <span className="font-semibold text-ink">{projectionTotals.settledCount}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Opportunity Pipeline</p>
+                  <h2 className="mt-2 text-lg font-semibold">Stage Totals</h2>
+                  <div className="mt-4 grid gap-3 text-sm text-steel/70">
+                    {OPPORTUNITY_STAGES.map((stage) => {
+                      const stageTotal = opportunitiesByStage[stage]
+                        .reduce((sum, opportunity) => sum + parseMoney(opportunity.amount), 0);
+                      return (
+                        <div key={stage} className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-ink">{stage}</span>
+                            <span className="text-xs text-steel/60">
+                              Confidence: {Math.round(getOpportunityConfidence(stage) * 100)}%
+                            </span>
+                          </div>
+                          <span className="font-semibold text-ink">{formatMoney(stageTotal)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Month Snapshot</p>
+                  <h2 className="mt-2 text-lg font-semibold">Projection vs Collected</h2>
+                  <div className="mt-4 grid gap-3 text-sm text-steel/70">
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Expected cash-in</span>
+                      <span className="font-semibold text-ink">{formatMoney(projectionTotals.expected)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Collected so far</span>
+                      <span className="font-semibold text-ink">{formatMoney(monthTotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-steel/10 bg-white/60 px-4 py-3">
+                      <span>Remaining to hit expected</span>
+                      <span className="font-semibold text-ink">
+                        {formatMoney(Math.max(0, projectionTotals.expected - monthTotal))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {view === "opportunities" && (
+            <section id="opportunitiesView">
+              <div className="glass rounded-3xl p-5 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">Opportunity Pipeline</h2>
+                    <p className="text-xs text-steel/60">Track offers before they become payment plans.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-sm text-steel/70">
+                    <div className="rounded-2xl border border-steel/10 bg-white/70 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Pipeline Forecast</p>
+                      <p className="text-base font-semibold">{formatMoney(opportunityForecast)}</p>
+                    </div>
+                    <div className="rounded-2xl border border-steel/10 bg-white/70 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Open Opportunities</p>
+                      <p className="text-base font-semibold">{opportunities.length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 overflow-x-auto pb-4">
+                <div className="grid auto-cols-[280px] grid-flow-col gap-4">
+                  {OPPORTUNITY_STAGES.map((stage) => (
+                    <div key={stage} className="glass rounded-3xl p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-semibold">{stage}</h3>
+                          <p className="text-xs text-steel/60">
+                            {opportunitiesByStage[stage].length} opportunities
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-ink/5 px-2 py-1 text-xs text-steel/70">
+                          {Math.round(getOpportunityConfidence(stage) * 100)}%
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-3">
+                        {opportunitiesByStage[stage].map((opportunity) => (
+                          <div
+                            key={opportunity.id}
+                            className="group rounded-2xl border border-steel/10 bg-white/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h4 className="text-sm font-semibold">{opportunity.merchant}</h4>
+                                <p className="text-xs text-steel/60">{opportunity.client || "Client not listed"}</p>
+                              </div>
+                              <span className="text-xs font-semibold text-ink">
+                                {formatMoney(parseMoney(opportunity.amount))}
+                              </span>
+                            </div>
+                            <div className="mt-2 text-xs text-steel/70">
+                              <p>Close: {displayDateValue(opportunity.expectedCloseDate)}</p>
+                              <p>Plan: {opportunity.frequency || "TBD"}</p>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-2 text-xs text-steel/70">
+                              <select
+                                className="rounded-full border border-steel/10 bg-white px-2 py-1 text-xs font-semibold text-steel/70"
+                                value={opportunity.stage}
+                                onChange={(event) => updateOpportunityStage(opportunity.id, event.target.value)}
+                              >
+                                {OPPORTUNITY_STAGES.map((stageOption) => (
+                                  <option key={stageOption} value={stageOption}>
+                                    {stageOption}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  className="rounded-full border border-steel/10 px-2 py-1 text-xs font-semibold"
+                                  onClick={() => openOpportunityModal(opportunity)}
+                                >
+                                  Edit
+                                </button>
+                                {opportunity.stage === "Payment Plan Made" && (
+                                  <button
+                                    className="rounded-full bg-ink px-2 py-1 text-xs font-semibold text-white"
+                                    onClick={() => convertOpportunityToAccount(opportunity)}
+                                  >
+                                    Convert
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {opportunitiesByStage[stage].length === 0 && (
+                          <div className="rounded-2xl border border-dashed border-steel/20 bg-white/60 px-3 py-4 text-center text-xs text-steel/60">
+                            No opportunities in this stage.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
@@ -1103,6 +1430,143 @@ export default function Home() {
           )}
         </main>
       </div>
+
+      {showOpportunityModal && (
+        <div id="opportunityModal" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="glass w-full max-w-3xl rounded-3xl p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">
+                {editingOpportunity ? "Edit Opportunity" : "Add Opportunity"}
+              </h2>
+              <button className="text-xl text-steel/60" onClick={closeOpportunityModal}>
+                &times;
+              </button>
+            </div>
+            <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={upsertOpportunity}>
+              <input type="hidden" name="opportunityId" value={editingOpportunity?.id || ""} />
+              <label className="text-sm">
+                Merchant
+                <input
+                  name="merchantName"
+                  required
+                  defaultValue={editingOpportunity?.merchant || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Client
+                <input
+                  name="clientName"
+                  defaultValue={editingOpportunity?.client || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Expected Amount
+                <input
+                  name="amount"
+                  defaultValue={editingOpportunity?.amount || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Stage
+                <select
+                  name="stage"
+                  defaultValue={editingOpportunity?.stage || OPPORTUNITY_STAGES[0]}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                >
+                  {OPPORTUNITY_STAGES.map((stage) => (
+                    <option key={stage} value={stage}>
+                      {stage}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                Expected Close Date
+                <input
+                  name="expectedCloseDate"
+                  type="date"
+                  defaultValue={editingOpportunity?.expectedCloseDate || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Planned Start Date
+                <input
+                  name="startDate"
+                  defaultValue={editingOpportunity?.startDate || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Frequency
+                <input
+                  name="frequency"
+                  defaultValue={editingOpportunity?.frequency || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Payment Type
+                <input
+                  name="type"
+                  defaultValue={editingOpportunity?.type || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Kanban Status
+                <select
+                  name="paymentStatus"
+                  defaultValue={editingOpportunity?.paymentStatus || "Unsorted"}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                >
+                  {statuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm md:col-span-2">
+                Notes
+                <textarea
+                  name="notes"
+                  rows="3"
+                  defaultValue={editingOpportunity?.notes || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                ></textarea>
+              </label>
+              <div className="md:col-span-2 flex justify-end gap-3">
+                {editingOpportunity && (
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-coral/20 px-4 py-2 text-sm text-coral"
+                    onClick={() => {
+                      deleteOpportunity(editingOpportunity.id);
+                      closeOpportunityModal();
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="rounded-2xl border border-steel/10 px-4 py-2 text-sm"
+                  onClick={closeOpportunityModal}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white">
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showMerchantModal && (
         <div id="merchantModal" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">

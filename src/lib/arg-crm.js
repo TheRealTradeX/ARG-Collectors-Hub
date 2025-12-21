@@ -2,6 +2,26 @@ const STORAGE_KEY = "arg_crm_kanban_v1";
 const SIDEBAR_KEY = "arg_crm_sidebar_collapsed";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+const OPPORTUNITY_STAGES = [
+  "Lead",
+  "Offer Sent",
+  "Approved",
+  "Countered",
+  "Settlement Sent",
+  "Settlement Signed",
+  "Payment Plan Made",
+];
+
+const OPPORTUNITY_STAGE_CONFIDENCE = {
+  Lead: 0.2,
+  "Offer Sent": 0.35,
+  Approved: 0.6,
+  Countered: 0.5,
+  "Settlement Sent": 0.7,
+  "Settlement Signed": 0.85,
+  "Payment Plan Made": 1,
+};
+
 const STATUS_HEADERS = [
   "SETTLED",
   "Good Faith",
@@ -69,6 +89,16 @@ const currentMonthKey = () => {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
+};
+
+const getMonthDateRange = (monthKey) => {
+  const [yearRaw, monthRaw] = String(monthKey || "").split("-");
+  const year = Number.parseInt(yearRaw, 10);
+  const month = Number.parseInt(monthRaw, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0);
+  return { start, end, year, month };
 };
 
 const formatMoney = (value) => {
@@ -142,6 +172,8 @@ const normalizeFrequency = (value) => {
   return raw;
 };
 
+const getOpportunityConfidence = (stage) => OPPORTUNITY_STAGE_CONFIDENCE[stage] ?? 0.2;
+
 const buildDate = (year, month, day) => {
   const candidate = new Date(year, month, day);
   if (
@@ -209,6 +241,8 @@ const diffInDays = (dateA, dateB) => {
   const utcB = toMidnight(dateB);
   return Math.round((utcA - utcB) / MS_PER_DAY);
 };
+
+const addDays = (date, days) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
 const getAccountAgeDays = (merchant) => {
   if (!merchant.addedDate) return 0;
@@ -335,6 +369,128 @@ const getNextDueDate = (merchant) => {
   }
 
   return null;
+};
+
+const getFirstWeekdayOnOrAfter = (date, weekday) => {
+  const diff = (weekday - date.getDay() + 7) % 7;
+  return addDays(date, diff);
+};
+
+const getMonthlyDueDates = (merchant, monthKey) => {
+  const range = getMonthDateRange(monthKey);
+  if (!range) return [];
+  const { start, end, year, month } = range;
+  const frequency = normalizeFrequency(merchant.frequency);
+  if (!frequency || frequency === "Lump Sum") return [];
+
+  const startDate = parseDate(merchant.startDate);
+  if (startDate && startDate > end) return [];
+  const effectiveStart = startDate && startDate > start ? startDate : start;
+  const dates = [];
+
+  if (frequency === "Daily") {
+    for (let cursor = effectiveStart; cursor <= end; cursor = addDays(cursor, 1)) {
+      dates.push(cursor);
+    }
+    return dates;
+  }
+
+  if (frequency === "Weekly") {
+    const weekday = (startDate || start).getDay();
+    let cursor = getFirstWeekdayOnOrAfter(effectiveStart, weekday);
+    while (cursor <= end) {
+      dates.push(cursor);
+      cursor = addDays(cursor, 7);
+    }
+    return dates;
+  }
+
+  if (frequency === "Bi-Weekly") {
+    if (!startDate) return [];
+    let cursor = startDate;
+    while (cursor < effectiveStart) {
+      cursor = addDays(cursor, 14);
+    }
+    while (cursor <= end) {
+      dates.push(cursor);
+      cursor = addDays(cursor, 14);
+    }
+    return dates;
+  }
+
+  if (frequency === "Semi-Monthly") {
+    const anchorDay = parseDayOfMonth(merchant.startDate) || 1;
+    const first = new Date(year, month - 1, anchorDay);
+    const second = new Date(year, month - 1, Math.min(anchorDay + 15, 28));
+    [first, second].forEach((date) => {
+      if (date >= effectiveStart && date <= end) dates.push(date);
+    });
+    return dates;
+  }
+
+  if (frequency === "Monthly") {
+    const anchorDay = parseDayOfMonth(merchant.startDate) || (startDate ? startDate.getDate() : null);
+    if (!anchorDay) return [];
+    const lastDay = new Date(year, month, 0).getDate();
+    const date = new Date(year, month - 1, Math.min(anchorDay, lastDay));
+    if (date >= effectiveStart && date <= end) dates.push(date);
+    return dates;
+  }
+
+  return dates;
+};
+
+const getMonthlyProjectedAmount = (merchant, monthKey) => {
+  const amount = parseMoney(merchant.amount);
+  if (amount <= 0) return 0;
+  const dueDates = getMonthlyDueDates(merchant, monthKey);
+  return dueDates.length * amount;
+};
+
+const getAccountRiskCategory = (merchant) => {
+  const status = String(merchant.status || "").toLowerCase();
+  if (status.includes("settled")) return "settled";
+  if (status.includes("defaulted")) return "defaulted";
+  return "active";
+};
+
+const getMonthlyProjectionTotals = (merchants, monthKey) => {
+  let expected = 0;
+  let atRisk = 0;
+  let settledLoss = 0;
+  let defaultedLoss = 0;
+  let activeCount = 0;
+  let settledCount = 0;
+  let defaultedCount = 0;
+
+  merchants.forEach((merchant) => {
+    const projected = getMonthlyProjectedAmount(merchant, monthKey);
+    if (!projected) return;
+    const category = getAccountRiskCategory(merchant);
+    if (category === "settled") {
+      settledLoss += projected;
+      settledCount += 1;
+      return;
+    }
+    if (category === "defaulted") {
+      atRisk += projected;
+      defaultedLoss += projected;
+      defaultedCount += 1;
+      return;
+    }
+    expected += projected;
+    activeCount += 1;
+  });
+
+  return {
+    expected,
+    atRisk,
+    settledLoss,
+    defaultedLoss,
+    activeCount,
+    settledCount,
+    defaultedCount,
+  };
 };
 
 const isDueThisWeek = (merchant) => {
@@ -504,6 +660,13 @@ const exportCsvData = (merchants, monthKey) => {
     .join("\n");
 };
 
+const getOpportunityForecastTotal = (opportunities) => {
+  return opportunities.reduce((sum, opportunity) => {
+    const amount = parseMoney(opportunity.amount);
+    return sum + amount * getOpportunityConfidence(opportunity.stage);
+  }, 0);
+};
+
 const getMonthTotal = (merchants, monthKey) =>
   merchants.reduce((sum, merchant) => {
     const total = merchant.payments
@@ -534,13 +697,14 @@ const loadStoredState = () => {
   }
 };
 
-const persistState = (merchants, statuses) => {
+const persistState = (merchants, statuses, opportunities) => {
   if (typeof window === "undefined") return;
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
       merchants,
       statuses,
+      opportunities: opportunities || [],
     })
   );
 };
@@ -560,9 +724,13 @@ export {
   SIDEBAR_KEY,
   MS_PER_DAY,
   DEFAULT_STATUSES,
+  OPPORTUNITY_STAGES,
   HEADER_KEY_MAP,
   todayKey,
   currentMonthKey,
+  getMonthDateRange,
+  getOpportunityConfidence,
+  getOpportunityForecastTotal,
   formatMoney,
   parseMoney,
   normalizeHeader,
@@ -579,6 +747,8 @@ export {
   isFollowUpOverdue,
   getTouchBadge,
   getNextDueDate,
+  getMonthlyProjectedAmount,
+  getMonthlyProjectionTotals,
   isDueThisWeek,
   getIncreaseStatus,
   ensureUnsortedStatus,
