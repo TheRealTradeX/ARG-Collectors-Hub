@@ -8,7 +8,7 @@
   --color-sun: #f6c355;
   --color-coral: #f06d5e;
   --color-sky: #57b8ff;
-  --shadow-glow: 0 12px 30px -18px rgba(0, 194, 168, 0.7);
+  --shadow-glow: 0 12px 30px -18px rgba(88, 170, 255, 0.7);
 }
 
 @theme inline {
@@ -53,6 +53,17 @@ body.sidebar-collapsed #sidebar {
   padding-right: 1rem;
 }
 
+body.sidebar-collapsed #sidebarHeader {
+  width: 3.25rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+body.sidebar-collapsed .sidebar-logo {
+  width: 3.25rem;
+  height: 3.25rem;
+}
+
 body.sidebar-collapsed .nav-label,
 body.sidebar-collapsed .sidebar-tip,
 body.sidebar-collapsed .sidebar-profile-name,
@@ -66,10 +77,25 @@ body.sidebar-collapsed .sidebar-profile {
 
 body.sidebar-collapsed .nav-button {
   justify-content: center;
+  width: 3.25rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 body.sidebar-collapsed .nav-icon {
   margin-right: 0;
+}
+
+body.sidebar-collapsed .sidebar-footer {
+  align-items: center;
+}
+
+body.sidebar-collapsed .sidebar-toggle,
+body.sidebar-collapsed .sidebar-profile {
+  margin-left: auto;
+  margin-right: auto;
 }
 
 body.sidebar-collapsed .nav-tooltip {
@@ -93,6 +119,24 @@ body.sidebar-collapsed #sidebarHeader {
 
 body.sidebar-collapsed #sidebarHeaderText {
   display: none;
+}
+
+body.sidebar-collapsed .sidebar-profile {
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+body.sidebar-collapsed .sidebar-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .nav-button {

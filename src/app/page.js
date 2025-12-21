@@ -78,13 +78,17 @@ export default function Home() {
   const topScrollRef = useRef(null);
   const topScrollInnerRef = useRef(null);
   const bottomScrollRef = useRef(null);
+  const isScrollSyncingRef = useRef(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     const saved = loadStoredState();
     if (saved && saved.merchants) {
+      const savedStatuses = saved.statuses && saved.statuses.length ? saved.statuses : DEFAULT_STATUSES.slice();
+      const merchantStatuses = saved.merchants.map((merchant) => merchant.status || "Unsorted");
+      const mergedStatuses = ensureUnsortedStatus(Array.from(new Set(savedStatuses.concat(merchantStatuses))));
       setMerchants(saved.merchants);
-      setStatuses(ensureUnsortedStatus(saved.statuses && saved.statuses.length ? saved.statuses : DEFAULT_STATUSES.slice()));
+      setStatuses(mergedStatuses);
       return;
     }
     setMerchants([]);
@@ -105,28 +109,54 @@ export default function Home() {
     persistSidebarState(sidebarCollapsed);
   }, [sidebarCollapsed]);
 
-  useEffect(() => {
-    if (!topScrollRef.current || !bottomScrollRef.current) return;
+  const handleTopScroll = () => {
+    if (view !== "kanban") return;
+    if (isScrollSyncingRef.current) {
+      isScrollSyncingRef.current = false;
+      return;
+    }
     const topEl = topScrollRef.current;
     const bottomEl = bottomScrollRef.current;
-    const syncTop = () => {
-      topEl.scrollLeft = bottomEl.scrollLeft;
-    };
-    const syncBottom = () => {
-      bottomEl.scrollLeft = topEl.scrollLeft;
-    };
-    topEl.addEventListener("scroll", syncBottom);
-    bottomEl.addEventListener("scroll", syncTop);
-    return () => {
-      topEl.removeEventListener("scroll", syncBottom);
-      bottomEl.removeEventListener("scroll", syncTop);
-    };
-  }, []);
+    if (!topEl || !bottomEl) return;
+    isScrollSyncingRef.current = true;
+    bottomEl.scrollLeft = topEl.scrollLeft;
+  };
+
+  const handleBottomScroll = () => {
+    if (view !== "kanban") return;
+    if (isScrollSyncingRef.current) {
+      isScrollSyncingRef.current = false;
+      return;
+    }
+    const topEl = topScrollRef.current;
+    const bottomEl = bottomScrollRef.current;
+    if (!topEl || !bottomEl) return;
+    isScrollSyncingRef.current = true;
+    topEl.scrollLeft = bottomEl.scrollLeft;
+  };
+
+  function updateKanbanScroll() {
+    if (view !== "kanban") return;
+    const topInner = topScrollInnerRef.current;
+    const bottomEl = bottomScrollRef.current;
+    const boardEl = boardRef.current;
+    if (!topInner || !bottomEl || !boardEl) return;
+    const width = Math.max(boardEl.scrollWidth, bottomEl.scrollWidth);
+    topInner.style.width = `${width}px`;
+    topScrollRef.current.scrollLeft = bottomEl.scrollLeft;
+  }
 
   useEffect(() => {
-    if (!topScrollInnerRef.current || !boardRef.current) return;
-    topScrollInnerRef.current.style.width = `${boardRef.current.scrollWidth}px`;
+    if (view !== "kanban") return;
+    const raf = requestAnimationFrame(updateKanbanScroll);
+    return () => cancelAnimationFrame(raf);
   }, [merchants, statuses, view, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly]);
+
+  useEffect(() => {
+    const handleResize = () => updateKanbanScroll();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [view]);
 
   const filteredMerchants = useMemo(() => {
     return merchants
@@ -142,7 +172,7 @@ export default function Home() {
       .filter((merchant) => (needWorkOnly ? isFollowUpOverdue(merchant) : true))
       .filter((merchant) => (dueWeekOnly ? isDueThisWeek(merchant) : true))
       .filter((merchant) => (increaseOnly ? Boolean(getIncreaseStatus(merchant)) : true))
-      .sort((a, b) => a.status.localeCompare(b.status) || a.merchant.localeCompare(b.merchant));
+      .sort((a, b) => (a.status || "").localeCompare(b.status || "") || a.merchant.localeCompare(b.merchant));
   }, [merchants, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly]);
 
   const monthTotal = useMemo(() => getMonthTotal(merchants, monthKey), [merchants, monthKey]);
@@ -347,28 +377,41 @@ export default function Home() {
     moveMerchant(id, status);
   };
 
-  const sortedStatuses = useMemo(() => {
-    const order = DEFAULT_STATUSES.concat(["Unsorted"]);
-    const next = [...statuses];
-    next.sort((a, b) => {
-      const aIndex = order.indexOf(a);
-      const bIndex = order.indexOf(b);
-      if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
-      if (aIndex === -1) return 1;
-      if (bIndex === -1) return -1;
-      return aIndex - bIndex;
+  const moveStatus = (status, direction) => {
+    if (status === "Unsorted") return;
+    setStatuses((prev) => {
+      const list = [...prev];
+      const index = list.indexOf(status);
+      if (index === -1) return list;
+      const unsortedIndex = list.indexOf("Unsorted");
+      const maxIndex = unsortedIndex === -1 ? list.length - 1 : unsortedIndex - 1;
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex > maxIndex) return list;
+      const swap = list[targetIndex];
+      list[targetIndex] = status;
+      list[index] = swap;
+      return list;
     });
-    return next;
+  };
+
+  const orderedStatuses = useMemo(() => {
+    const list = [...statuses];
+    const unsortedIndex = list.indexOf("Unsorted");
+    if (unsortedIndex !== -1 && unsortedIndex !== list.length - 1) {
+      list.splice(unsortedIndex, 1);
+      list.push("Unsorted");
+    }
+    return list;
   }, [statuses]);
   return (
     <div className="min-h-screen lg:flex">
       <aside
         id="sidebar"
-        className="glass min-h-screen w-full border-b border-white/70 px-6 py-6 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:border-b-0 lg:border-r lg:overflow-y-auto flex flex-col"
+        className="glass min-h-screen w-full border-b border-white/70 px-6 py-6 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:border-b-0 lg:border-r flex flex-col"
       >
         <div id="sidebarHeader" className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-2xl bg-ink text-white grid place-items-center shadow-glow">
-            <img src="/img/logo.png" alt="Logo" className="h-7 w-7 object-contain" />
+          <div className="sidebar-logo h-12 w-12 rounded-2xl bg-white/90 text-white grid place-items-center shadow-sm ring-1 ring-white/70">
+            <img src="/ARG Hub Logo.svg" alt="ARG Hub Logo" className="h-10 w-10 object-contain" />
           </div>
           <div id="sidebarHeaderText">
             <p className="text-xs uppercase tracking-[0.3em] text-steel/70">ARG CRM</p>
@@ -424,38 +467,36 @@ export default function Home() {
             </button>
           ))}
         </nav>
-        <div className="mt-auto space-y-4">
+        <div className="sidebar-footer mt-auto flex flex-col gap-4 items-stretch">
           <button
             data-action="toggleSidebar"
-            className="w-full rounded-2xl border border-steel/10 bg-white/70 px-4 py-2 text-sm font-semibold text-steel/80"
+            className="sidebar-toggle grid h-11 w-11 place-items-center rounded-full border border-steel/10 bg-white/80 text-steel/80"
             aria-label={sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
             title={sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
             onClick={handleToggleSidebar}
           >
-            <span className="flex items-center justify-center gap-2">
-              <svg className="toggle-icon h-4 w-4 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 6l-6 6 6 6"></path>
-              </svg>
-              <span className="nav-label">Collapse</span>
-            </span>
+            <svg className="toggle-icon h-5 w-5 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 6l-6 6 6 6"></path>
+              <path d="M19 6l-6 6 6 6"></path>
+            </svg>
           </button>
           <div className="sidebar-tip rounded-2xl border border-steel/10 bg-white/70 p-4 text-xs text-steel/70">
             Tip: drag cards on the Kanban board to update status and track touches automatically.
           </div>
           <div className="sidebar-profile flex items-center gap-3 rounded-2xl border border-steel/10 bg-white/70 p-3">
-            <div className="h-10 w-10 rounded-full bg-ink text-white grid place-items-center text-sm font-semibold">
+            <div className="sidebar-avatar h-10 w-10 rounded-full bg-ink text-white grid place-items-center text-sm font-semibold">
               JP
             </div>
             <div>
               <p className="sidebar-profile-name text-sm font-semibold text-ink">Jefrey Peralta</p>
-              <p className="sidebar-profile-role text-xs text-steel/60">Collections Manager</p>
+              <p className="sidebar-profile-role text-xs text-steel/60">Accounts Manager</p>
             </div>
           </div>
         </div>
       </aside>
 
       <div id="mainContent" className="flex-1 min-w-0 overflow-x-hidden px-6 py-6 md:px-10">
-        <div className="sticky top-0 z-20 -mx-6 bg-gradient-to-br from-haze via-white to-[#E5F7F4]/90 px-6 pb-6 pt-6 backdrop-blur md:-mx-10 md:px-10">
+        <div className="sticky top-0 z-20 -mx-6 bg-gradient-to-br from-haze via-white to-[#DCEBFF]/90 px-6 pb-6 pt-6 backdrop-blur md:-mx-10 md:px-10">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-steel/70">ARG CRM</p>
@@ -481,15 +522,10 @@ export default function Home() {
               </button>
               <button
                 data-action="toggleSidebar"
-                className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                aria-label={sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
-                title={sidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
-                onClick={handleToggleSidebar}
-              >
-                <svg className="toggle-icon h-4 w-4 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M15 6l-6 6 6 6"></path>
-                </svg>
-              </button>
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
               <button
                 id="exportTemplateCsv"
                 className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
@@ -718,7 +754,15 @@ export default function Home() {
                         const increaseStatus = getIncreaseStatus(merchant);
                         return (
                           <tr key={merchant.id}>
-                            <td className="py-3 pr-4 font-semibold">{merchant.merchant}</td>
+                            <td className="py-3 pr-4 font-semibold">
+                              <button
+                                type="button"
+                                className="text-left hover:underline"
+                                onClick={() => openMerchantModal(merchant)}
+                              >
+                                {merchant.merchant}
+                              </button>
+                            </td>
                             <td className="py-3 pr-4 text-steel/70">{merchant.client || "-"}</td>
                             <td className="py-3 pr-4 text-steel/70">{merchant.status}</td>
                             <td className="py-3 pr-4 text-steel/70">{merchant.startDate || "-"}</td>
@@ -767,20 +811,6 @@ export default function Home() {
                                 >
                                   Touched
                                 </button>
-                                <button
-                                  data-action="edit"
-                                  className="rounded-full border border-steel/10 px-2 py-1 text-xs"
-                                  onClick={() => openMerchantModal(merchant)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  data-action="delete"
-                                  className="rounded-full border border-coral/20 px-2 py-1 text-xs text-coral"
-                                  onClick={() => deleteMerchant(merchant.id)}
-                                >
-                                  Delete
-                                </button>
                               </div>
                             </td>
                           </tr>
@@ -802,14 +832,21 @@ export default function Home() {
           {view === "kanban" && (
             <section id="kanbanView">
               <div className="-mx-2 px-2 pb-2">
-                <div ref={topScrollRef} id="kanbanScrollTop" className="overflow-x-auto">
+                <div ref={topScrollRef} id="kanbanScrollTop" className="overflow-x-auto" onScroll={handleTopScroll}>
                   <div ref={topScrollInnerRef} id="kanbanScrollTopInner" className="h-3 min-w-full"></div>
                 </div>
               </div>
-              <div ref={bottomScrollRef} id="kanbanScrollBottom" className="-mx-2 max-w-full overflow-x-auto px-2 pb-6">
+              <div
+                ref={bottomScrollRef}
+                id="kanbanScrollBottom"
+                className="-mx-2 max-w-full overflow-x-auto px-2 pb-6"
+                onScroll={handleBottomScroll}
+              >
                 <div ref={boardRef} id="board" className="flex min-w-max gap-5">
-                  {sortedStatuses.map((status) => {
-                    const statusMerchants = filteredMerchants.filter((merchant) => merchant.status === status);
+                  {orderedStatuses.map((status) => {
+                    const statusMerchants = filteredMerchants.filter(
+                      (merchant) => (merchant.status || "Unsorted") === status
+                    );
                     return (
                       <div
                         key={status}
@@ -840,8 +877,9 @@ export default function Home() {
                             return (
                               <div
                                 key={merchant.id}
-                                className="group relative rounded-2xl border border-steel/10 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                                className="group relative cursor-pointer rounded-2xl border border-steel/10 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                                 draggable
+                                onClick={() => openMerchantModal(merchant)}
                                 onDragStart={(event) => event.dataTransfer.setData("text/plain", merchant.id)}
                               >
                                 <div className="flex items-center justify-between gap-2">
@@ -882,34 +920,24 @@ export default function Home() {
                                     </span>
                                   )}
                                 </div>
-                                <div className="mt-3 flex justify-end gap-2 opacity-0 transition group-hover:opacity-100">
-                                  <button
-                                    data-action="edit"
-                                    className="rounded-full bg-ink/5 px-2 py-1 text-[11px]"
-                                    onClick={() => openMerchantModal(merchant)}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    data-action="delete"
-                                    className="rounded-full bg-coral/10 px-2 py-1 text-[11px] text-coral"
-                                    onClick={() => deleteMerchant(merchant.id)}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
                                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                   <button
                                     data-action="payment"
                                     className="w-full rounded-2xl bg-ink px-3 py-2 text-xs font-semibold text-white"
-                                    onClick={() => openPaymentModal(merchant)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openPaymentModal(merchant);
+                                    }}
                                   >
                                     Add Payment
                                   </button>
                                   <button
                                     data-action="touched"
                                     className="w-full rounded-2xl border border-steel/10 px-3 py-2 text-xs font-semibold"
-                                    onClick={() => markTouched(merchant.id)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      markTouched(merchant.id);
+                                    }}
                                   >
                                     Mark Touched
                                   </button>
@@ -1039,7 +1067,43 @@ export default function Home() {
                   className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
                 ></textarea>
               </label>
+              {editingMerchant && (
+                <div className="md:col-span-2">
+                  <details className="rounded-2xl border border-steel/10 bg-white/70 px-4 py-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-steel/80">
+                      Payment log ({editingMerchant.payments?.length || 0})
+                    </summary>
+                    <div className="mt-3 space-y-2 text-sm text-steel/70">
+                      {editingMerchant.payments && editingMerchant.payments.length > 0 ? (
+                        editingMerchant.payments
+                          .slice()
+                          .sort((a, b) => (a.date < b.date ? 1 : -1))
+                          .map((payment, index) => (
+                            <div key={`${payment.date}-${payment.amount}-${index}`} className="flex items-center justify-between">
+                              <span>{displayDateValue(payment.date)}</span>
+                              <span className="font-semibold text-ink">{formatMoney(payment.amount)}</span>
+                            </div>
+                          ))
+                      ) : (
+                        <p>No payments logged.</p>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              )}
               <div className="md:col-span-2 flex justify-end gap-3">
+                {editingMerchant && (
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-coral/20 px-4 py-2 text-sm text-coral"
+                    onClick={() => {
+                      deleteMerchant(editingMerchant.id);
+                      closeMerchantModal();
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
                 <button type="button" id="cancelMerchant" className="rounded-2xl border border-steel/10 px-4 py-2 text-sm" onClick={closeMerchantModal}>
                   Cancel
                 </button>
@@ -1120,11 +1184,31 @@ export default function Home() {
               </button>
             </form>
             <div id="statusList" className="mt-4 grid gap-2">
-              {sortedStatuses.map((status) => (
+              {orderedStatuses.map((status, index) => (
                 <div
                   key={status}
                   className="flex items-center gap-2 rounded-2xl border border-steel/10 bg-white/70 px-3 py-2"
                 >
+                  <div className="flex flex-col gap-1">
+                    <button
+                      className="rounded-full border border-steel/10 px-2 py-1 text-[10px] font-semibold"
+                      disabled={status === "Unsorted" || index === 0}
+                      onClick={() => moveStatus(status, "up")}
+                      type="button"
+                      aria-label="Move status up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      className="rounded-full border border-steel/10 px-2 py-1 text-[10px] font-semibold"
+                      disabled={status === "Unsorted" || index === orderedStatuses.length - 1 || orderedStatuses[index + 1] === "Unsorted"}
+                      onClick={() => moveStatus(status, "down")}
+                      type="button"
+                      aria-label="Move status down"
+                    >
+                      ↓
+                    </button>
+                  </div>
                   <input
                     className="w-full bg-transparent text-sm text-ink focus:outline-none"
                     value={statusEdits[status] ?? status}
