@@ -457,7 +457,7 @@ const exportCsvData = (merchants, monthKey) => {
     "Account Age Days",
     "Last Worked",
     "Next Follow Up",
-    "Next Due",
+    "Next Payment",
     "Follow-up Status",
     `Payments (${monthKey})`,
   ];

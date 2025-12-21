@@ -723,8 +723,8 @@ export default function Home() {
                         <th className="py-3 pr-4">Frequency</th>
                         <th className="py-3 pr-4">Age</th>
                         <th className="py-3 pr-4">Priority</th>
-                        <th className="py-3 pr-4">Last Worked</th>
-                        <th className="py-3 pr-4">Follow-up</th>
+                        <th className="py-3 pr-4 text-center">Last Worked</th>
+                        <th className="py-3 pr-4 text-center">Follow-up</th>
                         <th className="py-3 pr-4">Next Payment</th>
                         <th className="py-3 pr-4">Increase</th>
                         <th className="py-3 pr-4">Month Total</th>
@@ -761,17 +761,17 @@ export default function Home() {
                             <td className="py-3 pr-4 text-steel/70">{merchant.frequency || "-"}</td>
                             <td className="py-3 pr-4 text-steel/70">{ageDays}</td>
                             <td className="py-3 pr-4 text-steel/70">{priority}</td>
-                            <td className="py-3 pr-4">
-                              <span className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${touchBadge.className}`}>
-                                {touchBadge.label}
-                              </span>
-                            </td>
-                              <td className="py-3 pr-4">
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-[11px] font-semibold text-steel/60">
+                              <td className="py-3 pr-4 text-center">
+                                <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${touchBadge.className}`}>
+                                  {touchBadge.label}
+                                </span>
+                              </td>
+                              <td className="py-3 pr-4 text-center align-middle">
+                                <div className="relative flex items-center justify-center">
+                                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-semibold leading-none text-steel/60">
                                     {nextFollowUp ? formatDisplayDate(nextFollowUp) : "-"}
                                   </span>
-                                  <span className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${followUpStatus.className}`}>
+                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${followUpStatus.className}`}>
                                     {followUpStatus.label}
                                   </span>
                                 </div>
@@ -890,7 +890,7 @@ export default function Home() {
                                 <div className="mt-3 text-xs text-steel/70 space-y-1">
                                   <p><span className="font-medium">Age:</span> {ageDays} days</p>
                                   <p><span className="font-medium">Next follow-up:</span> {formatDisplayDate(getNextFollowUpDate(merchant))}</p>
-                                  <p><span className="font-medium">Next due:</span> {nextDue ? formatDisplayDate(nextDue) : "-"}</p>
+                                  <p><span className="font-medium">Next payment:</span> {nextDue ? formatDisplayDate(nextDue) : "-"}</p>
                                   <p><span className="font-medium">Increase:</span> {displayDateValue(merchant.increaseDate)}</p>
                                   <p><span className="font-medium">Notes:</span> {merchant.notes || "None"}</p>
                                 </div>
