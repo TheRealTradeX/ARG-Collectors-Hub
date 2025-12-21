@@ -379,6 +379,14 @@ body.theme-dark #kanbanView .rounded-2xl {
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.08), 0 14px 30px -22px rgba(56, 189, 248, 0.28);
 }
 
+body.theme-dark button.rounded-full {
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.14), 0 12px 24px -16px rgba(56, 189, 248, 0.45);
+}
+
+body.theme-dark button.rounded-full:hover {
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.26), 0 16px 30px -18px rgba(56, 189, 248, 0.6);
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
