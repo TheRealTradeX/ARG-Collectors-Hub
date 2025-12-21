@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+:root {
+  --color-ink: #0e1116;
+  --color-haze: #f6f7fb;
+  --color-steel: #222838;
+  --color-accent: #00c2a8;
+  --color-sun: #f6c355;
+  --color-coral: #f06d5e;
+  --color-sky: #57b8ff;
+  --shadow-glow: 0 12px 30px -18px rgba(0, 194, 168, 0.7);
+}
+
+@theme inline {
+  --color-ink: var(--color-ink);
+  --color-haze: var(--color-haze);
+  --color-steel: var(--color-steel);
+  --color-accent: var(--color-accent);
+  --color-sun: var(--color-sun);
+  --color-coral: var(--color-coral);
+  --color-sky: var(--color-sky);
+  --shadow-glow: var(--shadow-glow);
+  --font-sans: var(--font-space-grotesk);
+}
+
+body {
+  font-family: var(--font-space-grotesk), ui-sans-serif, system-ui;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+.fade-in {
+  animation: fade 0.6s ease both;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+body.sidebar-collapsed #sidebar {
+  width: 5.25rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+body.sidebar-collapsed .nav-label,
+body.sidebar-collapsed .sidebar-tip,
+body.sidebar-collapsed .sidebar-profile-name,
+body.sidebar-collapsed .sidebar-profile-role {
+  display: none;
+}
+
+body.sidebar-collapsed .sidebar-profile {
+  justify-content: center;
+}
+
+body.sidebar-collapsed .nav-button {
+  justify-content: center;
+}
+
+body.sidebar-collapsed .nav-icon {
+  margin-right: 0;
+}
+
+body.sidebar-collapsed .nav-tooltip {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-4px);
+}
+
+body.sidebar-collapsed .nav-button:hover .nav-tooltip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+body.sidebar-collapsed .toggle-icon {
+  transform: rotate(180deg);
+}
+
+body.sidebar-collapsed #sidebarHeader {
+  justify-content: center;
+}
+
+body.sidebar-collapsed #sidebarHeaderText {
+  display: none;
+}
+
+.nav-button {
+  position: relative;
+}
+
+.nav-tooltip {
+  position: absolute;
+  left: calc(100% + 0.75rem);
+  top: 50%;
+  transform: translateY(-50%) translateX(-4px);
+  background: #0e1116;
+  color: #fff;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 10px 25px -12px rgba(14, 17, 22, 0.6);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 18, 24, 0.08);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0e1116;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #05070b;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #0e1116 rgba(15, 18, 24, 0.08);
+}
+
+#kanbanScrollBottom::-webkit-scrollbar {
+  height: 0;
+}
+
+#kanbanScrollBottom {
+  scrollbar-width: none;
+}
