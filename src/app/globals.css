@@ -84,12 +84,31 @@ body.sidebar-collapsed .nav-button {
   margin-right: auto;
 }
 
+#sidebar {
+  position: relative;
+  z-index: 60;
+  overflow: visible;
+}
+
+#sidebar nav {
+  overflow: visible;
+}
+
+#mainContent {
+  position: relative;
+  z-index: 10;
+}
+
 body.sidebar-collapsed .nav-icon {
   margin-right: 0;
 }
 
 body.sidebar-collapsed .sidebar-footer {
   align-items: center;
+}
+
+body.sidebar-collapsed .nav-button {
+  z-index: 70;
 }
 
 body.sidebar-collapsed .sidebar-toggle,
@@ -160,6 +179,66 @@ body.sidebar-collapsed .sidebar-avatar {
   white-space: nowrap;
   transition: opacity 0.2s ease, transform 0.2s ease;
   box-shadow: 0 10px 25px -12px rgba(14, 17, 22, 0.6);
+  z-index: 80;
+}
+
+body.theme-dark {
+  background-color: #0b0d13;
+  color: #e6e8ef;
+  --shadow-glow: 0 16px 34px -22px rgba(56, 189, 248, 0.8);
+}
+
+body.theme-dark.bg-gradient-to-br {
+  background: #0b0d13 !important;
+}
+
+body.theme-dark .glass {
+  background: rgba(15, 17, 26, 0.8);
+  border-color: rgba(148, 163, 184, 0.15);
+}
+
+body.theme-dark .top-header {
+  background: rgba(12, 14, 22, 0.85);
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+body.theme-dark .bg-white {
+  background-color: #141827;
+}
+
+body.theme-dark .bg-white\/70,
+body.theme-dark .bg-white\/80,
+body.theme-dark .bg-white\/85 {
+  background-color: rgba(20, 24, 39, 0.82);
+}
+
+body.theme-dark .border-white\/70 {
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+body.theme-dark .text-ink {
+  color: #e6e8ef;
+}
+
+body.theme-dark .bg-ink {
+  background-color: #0f172a;
+}
+
+body.theme-dark .nav-button.bg-ink {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.75));
+  color: #e6f6ff;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2), 0 14px 30px -18px rgba(56, 189, 248, 0.6);
+}
+
+body.theme-dark .text-steel\/70,
+body.theme-dark .text-steel\/60,
+body.theme-dark .text-steel\/80 {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+body.theme-dark .shadow-sm,
+body.theme-dark .shadow-md {
+  box-shadow: 0 20px 40px -30px rgba(15, 23, 42, 0.8);
 }
 
 ::-webkit-scrollbar {

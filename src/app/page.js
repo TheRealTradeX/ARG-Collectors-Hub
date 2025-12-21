@@ -61,6 +61,7 @@ export default function Home() {
   const [increaseOnly, setIncreaseOnly] = useState(false);
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [theme, setTheme] = useState("light");
 
   const [showMerchantModal, setShowMerchantModal] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState(null);
@@ -108,6 +109,20 @@ export default function Home() {
     document.body.classList.toggle("sidebar-collapsed", sidebarCollapsed);
     persistSidebarState(sidebarCollapsed);
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const savedTheme = typeof window !== "undefined" ? window.localStorage.getItem("collectors_hub_theme") : null;
+    if (savedTheme === "dark" || savedTheme === "light") {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle("theme-dark", theme === "dark");
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("collectors_hub_theme", theme);
+    }
+  }, [theme]);
 
   const handleTopScroll = () => {
     if (view !== "payments") return;
@@ -186,6 +201,7 @@ export default function Home() {
   );
 
   const handleToggleSidebar = () => setSidebarCollapsed((prev) => !prev);
+  const handleToggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
 
   const openMerchantModal = (merchant = null) => {
     setEditingMerchant(merchant);
@@ -311,7 +327,7 @@ export default function Home() {
 
   const handleExportTemplate = () => {
     const csv = exportTemplateCsv();
-    downloadBlob(csv, "collectors-hub-template.csv");
+    downloadBlob(csv, "Collectors Hub Template.csv");
   };
 
   const resetData = () => {
@@ -451,6 +467,16 @@ export default function Home() {
                 </svg>
               ),
             },
+            {
+              key: "settings",
+              label: "Settings",
+              icon: (
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"></path>
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7 4.6l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 21 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path>
+                </svg>
+              ),
+            },
           ].map((item) => (
             <button
               key={item.key}
@@ -496,13 +522,19 @@ export default function Home() {
         </div>
       </aside>
 
-      <div id="mainContent" className="flex-1 min-w-0 overflow-x-hidden px-6 py-6 md:px-10">
-        <div className="sticky top-0 z-20 -mx-6 border-b border-white/70 bg-white/85 px-6 pb-4 pt-5 backdrop-blur-xl md:-mx-10 md:px-10 md:pb-6 md:pt-6">
+      <div id="mainContent" className="flex-1 min-w-0 px-6 py-6 md:px-10">
+        <div className="top-header sticky top-0 z-20 -mx-6 border-b border-white/70 bg-white/85 px-6 pb-4 pt-5 backdrop-blur-xl md:-mx-10 md:px-10 md:pb-6 md:pt-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-steel/70">Collectors Hub</p>
               <h1 id="pageTitle" className="text-2xl font-semibold">
-                {view === "accounts" ? "Accounts Overview" : view === "dashboard" ? "Dashboard Overview" : "Payments Overview"}
+                {view === "accounts"
+                  ? "Accounts Overview"
+                  : view === "dashboard"
+                  ? "Dashboard Overview"
+                  : view === "payments"
+                  ? "Payments Overview"
+                  : "Settings"}
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -545,6 +577,7 @@ export default function Home() {
           </header>
         </div>
 
+        {view !== "settings" && (
         <section className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_1fr_1fr_1fr]">
             <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
               <div className="flex items-center justify-between">
@@ -666,6 +699,7 @@ export default function Home() {
               </div>
             </div>
           </section>
+        )}
 
         <main className="mt-6">
           {view === "dashboard" && (
@@ -948,6 +982,156 @@ export default function Home() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            </section>
+          )}
+          {view === "settings" && (
+            <section id="settingsView">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Data & Templates</p>
+                      <h2 className="mt-2 text-lg font-semibold">CSV Imports & Exports</h2>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-steel/60">
+                    Upload account data, export current records, or generate a template for your team.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    >
+                      Import CSV
+                    </button>
+                    <button
+                      className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      onClick={handleExportCsv}
+                    >
+                      Export CSV
+                    </button>
+                    <button
+                      className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                      onClick={handleExportTemplate}
+                    >
+                      Generate Template
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-steel/60">
+                    Template columns: Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
+                    Last Touched, Account Added Date.
+                  </p>
+                </div>
+
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Monthly Controls</p>
+                  <h2 className="mt-2 text-lg font-semibold">Reporting Window</h2>
+                  <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                    <input
+                      type="month"
+                      className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
+                      value={monthKey}
+                      onChange={(event) => setMonthKey(event.target.value)}
+                    />
+                    <button
+                      className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm font-medium text-steel/80 sm:w-auto"
+                      onClick={resetData}
+                    >
+                      Reset Data
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-steel/60">Reset clears local data so you can import a fresh CSV.</p>
+                </div>
+
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Appearance</p>
+                  <h2 className="mt-2 text-lg font-semibold">Theme Mode</h2>
+                  <p className="mt-2 text-sm text-steel/60">Toggle between light and dark mode for your workspace.</p>
+                  <button
+                    className="mt-4 inline-flex items-center gap-2 rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-semibold text-steel/80 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    onClick={handleToggleTheme}
+                  >
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-ink text-white text-xs">
+                      {theme === "dark" ? "☾" : "☼"}
+                    </span>
+                    {theme === "dark" ? "Dark mode" : "Light mode"}
+                  </button>
+                </div>
+
+                <div className="glass rounded-3xl p-6 shadow-sm lg:col-span-2">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Filters & Follow-up Focus</p>
+                  <h2 className="mt-2 text-lg font-semibold">Prioritize Work</h2>
+                  <div className="mt-4 grid gap-6 lg:grid-cols-2">
+                    <div className="space-y-4">
+                      <input
+                        type="search"
+                        placeholder="Search merchant or client..."
+                        className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                      />
+                      <div className="grid gap-3">
+                        <label className="flex items-center gap-2 text-sm text-steel/70">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-accent"
+                            checked={touchedOnly}
+                            onChange={(event) => setTouchedOnly(event.target.checked)}
+                          />
+                          Show touched today
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-steel/70">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-coral"
+                            checked={needWorkOnly}
+                            onChange={(event) => setNeedWorkOnly(event.target.checked)}
+                          />
+                          Follow-up due
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-steel/70">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-sky-500"
+                            checked={dueWeekOnly}
+                            onChange={(event) => setDueWeekOnly(event.target.checked)}
+                          />
+                          Due this week
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-steel/70">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-emerald-500"
+                            checked={increaseOnly}
+                            onChange={(event) => setIncreaseOnly(event.target.checked)}
+                          />
+                          Increase due
+                        </label>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+                        <p className="text-xs text-steel/60">Overdue follow-ups</p>
+                        <p className="mt-2 text-2xl font-semibold">{overdueCount}</p>
+                      </div>
+                      <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+                        <p className="text-xs text-steel/60">Due this week</p>
+                        <p className="mt-2 text-2xl font-semibold">{dueWeekCount}</p>
+                      </div>
+                      <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+                        <p className="text-xs text-steel/60">Increase due</p>
+                        <p className="mt-2 text-2xl font-semibold">{increaseCount}</p>
+                      </div>
+                      <button
+                        className="w-full rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-semibold text-steel/70"
+                        onClick={openStatusModal}
+                      >
+                        Manage Statuses
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
