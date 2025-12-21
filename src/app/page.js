@@ -110,7 +110,7 @@ export default function Home() {
   }, [sidebarCollapsed]);
 
   const handleTopScroll = () => {
-    if (view !== "kanban") return;
+    if (view !== "payments") return;
     if (isScrollSyncingRef.current) {
       isScrollSyncingRef.current = false;
       return;
@@ -123,7 +123,7 @@ export default function Home() {
   };
 
   const handleBottomScroll = () => {
-    if (view !== "kanban") return;
+    if (view !== "payments") return;
     if (isScrollSyncingRef.current) {
       isScrollSyncingRef.current = false;
       return;
@@ -136,7 +136,7 @@ export default function Home() {
   };
 
   function updateKanbanScroll() {
-    if (view !== "kanban") return;
+    if (view !== "payments") return;
     const topInner = topScrollInnerRef.current;
     const bottomEl = bottomScrollRef.current;
     const boardEl = boardRef.current;
@@ -147,7 +147,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (view !== "kanban") return;
+    if (view !== "payments") return;
     const raf = requestAnimationFrame(updateKanbanScroll);
     return () => cancelAnimationFrame(raf);
   }, [merchants, statuses, view, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly]);
@@ -311,7 +311,7 @@ export default function Home() {
 
   const handleExportTemplate = () => {
     const csv = exportTemplateCsv();
-    downloadBlob(csv, "arg-crm-template.csv");
+    downloadBlob(csv, "collectors-hub-template.csv");
   };
 
   const resetData = () => {
@@ -414,7 +414,7 @@ export default function Home() {
             <img src="/ARG Hub Logo.svg" alt="ARG Hub Logo" className="h-10 w-10 object-contain" />
           </div>
           <div id="sidebarHeaderText">
-            <p className="text-xs uppercase tracking-[0.3em] text-steel/70">ARG CRM</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-steel/70">Collectors Hub</p>
             <p className="text-sm font-semibold">Collections Hub</p>
           </div>
         </div>
@@ -431,6 +431,16 @@ export default function Home() {
               ),
             },
             {
+              key: "payments",
+              label: "Payments",
+              icon: (
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 4v16"></path>
+                  <path d="M15.5 8.5c0-1.9-1.6-3.5-3.5-3.5s-3.5 1.2-3.5 2.8 1.3 2.6 3.4 2.9 3.6 1.2 3.6 3.1-1.6 3.2-3.5 3.2-3.5-1.1-3.5-2.8"></path>
+                </svg>
+              ),
+            },
+            {
               key: "dashboard",
               label: "Dashboard",
               icon: (
@@ -438,15 +448,6 @@ export default function Home() {
                   <path d="M4 12a8 8 0 1 0 16 0"></path>
                   <path d="M12 12V4"></path>
                   <path d="M12 12l6 2"></path>
-                </svg>
-              ),
-            },
-            {
-              key: "kanban",
-              label: "Kanban Board",
-              icon: (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M5 4h4v16H5zM10 8h4v12h-4zM15 12h4v8h-4z"></path>
                 </svg>
               ),
             },
@@ -496,12 +497,12 @@ export default function Home() {
       </aside>
 
       <div id="mainContent" className="flex-1 min-w-0 overflow-x-hidden px-6 py-6 md:px-10">
-        <div className="sticky top-0 z-20 -mx-6 bg-gradient-to-br from-haze via-white to-[#DCEBFF]/90 px-6 pb-6 pt-6 backdrop-blur md:-mx-10 md:px-10">
+        <div className="sticky top-0 z-20 -mx-6 border-b border-white/70 bg-white/85 px-6 pb-4 pt-5 backdrop-blur-xl md:-mx-10 md:px-10 md:pb-6 md:pt-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-steel/70">ARG CRM</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-steel/70">Collectors Hub</p>
               <h1 id="pageTitle" className="text-2xl font-semibold">
-                {view === "accounts" ? "Accounts Overview" : view === "dashboard" ? "Dashboard Overview" : "Kanban Overview"}
+                {view === "accounts" ? "Accounts Overview" : view === "dashboard" ? "Dashboard Overview" : "Payments Overview"}
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -527,18 +528,11 @@ export default function Home() {
                 tabIndex={-1}
               />
               <button
-                id="exportTemplateCsv"
-                className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                onClick={handleExportTemplate}
-              >
-                Export Template
-              </button>
-              <button
                 id="exportCsv"
                 className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                 onClick={handleExportCsv}
               >
-                Export CSV
+                Export
               </button>
               <button
                 id="addMerchant"
@@ -549,27 +543,28 @@ export default function Home() {
               </button>
             </div>
           </header>
+        </div>
 
-          <section className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_1fr_1fr_1fr]">
-            <div className="glass rounded-3xl p-5 shadow-sm">
+        <section className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_1fr_1fr_1fr]">
+            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
               <div className="flex items-center justify-between">
                 <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Today</p>
                 <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
                   {touchedCount} touched
                 </span>
               </div>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4 min-w-0">
                   <p className="text-xs text-steel/60">Payments Logged</p>
-                  <p className="text-2xl font-semibold">{formatMoney(paymentsToday)}</p>
+                  <p className="text-xl font-semibold sm:text-2xl break-words">{formatMoney(paymentsToday)}</p>
                 </div>
-                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
+                <div className="rounded-2xl border border-steel/10 bg-white/70 p-4 min-w-0">
                   <p className="text-xs text-steel/60">Month Total</p>
-                  <p className="text-2xl font-semibold">{formatMoney(monthTotal)}</p>
+                  <p className="text-xl font-semibold sm:text-2xl break-words">{formatMoney(monthTotal)}</p>
                 </div>
               </div>
             </div>
-            <div className="glass rounded-3xl p-5 shadow-sm">
+            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
               <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Filters</p>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <input
@@ -580,7 +575,7 @@ export default function Home() {
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
-                <label className="flex items-center gap-2 text-sm text-steel/70">
+                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
                   <input
                     id="touchedToggle"
                     type="checkbox"
@@ -590,7 +585,7 @@ export default function Home() {
                   />
                   Show touched today
                 </label>
-                <label className="flex items-center gap-2 text-sm text-steel/70">
+                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
                   <input
                     id="needWorkToggle"
                     type="checkbox"
@@ -600,7 +595,7 @@ export default function Home() {
                   />
                   Follow-up due
                 </label>
-                <label className="flex items-center gap-2 text-sm text-steel/70">
+                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
                   <input
                     id="dueWeekToggle"
                     type="checkbox"
@@ -610,7 +605,7 @@ export default function Home() {
                   />
                   Due this week
                 </label>
-                <label className="flex items-center gap-2 text-sm text-steel/70">
+                <label className="flex items-center gap-2 text-sm text-steel/70 w-full sm:w-auto">
                   <input
                     id="increaseToggle"
                     type="checkbox"
@@ -633,9 +628,9 @@ export default function Home() {
                 Last Touched, Account Added Date.
               </p>
             </div>
-            <div className="glass rounded-3xl p-5 shadow-sm">
+            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
               <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Monthly View</p>
-              <div className="mt-3 flex items-center gap-3">
+              <div className="mt-3 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                 <input
                   id="monthPicker"
                   type="month"
@@ -645,7 +640,7 @@ export default function Home() {
                 />
                 <button
                   id="clearStorage"
-                  className="rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm font-medium text-steel/80"
+                  className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm font-medium text-steel/80 sm:w-auto"
                   onClick={resetData}
                 >
                   Reset Data
@@ -653,7 +648,7 @@ export default function Home() {
               </div>
               <p className="mt-3 text-xs text-steel/60">Reset clears local data so you can import a fresh CSV.</p>
             </div>
-            <div className="glass rounded-3xl p-5 shadow-sm">
+            <div className="glass rounded-3xl p-5 shadow-sm min-w-0">
               <p className="text-sm uppercase tracking-[0.2em] text-steel/60">Follow-ups</p>
               <div className="mt-3 grid gap-3">
                 <div className="rounded-2xl border border-steel/10 bg-white/70 p-4">
@@ -671,7 +666,6 @@ export default function Home() {
               </div>
             </div>
           </section>
-        </div>
 
         <main className="mt-6">
           {view === "dashboard" && (
@@ -829,7 +823,7 @@ export default function Home() {
               </div>
             </section>
           )}
-          {view === "kanban" && (
+          {view === "payments" && (
             <section id="kanbanView">
               <div className="-mx-2 px-2 pb-2">
                 <div ref={topScrollRef} id="kanbanScrollTop" className="overflow-x-auto" onScroll={handleTopScroll}>
@@ -1197,7 +1191,7 @@ export default function Home() {
                       type="button"
                       aria-label="Move status up"
                     >
-                      ↑
+                      Up
                     </button>
                     <button
                       className="rounded-full border border-steel/10 px-2 py-1 text-[10px] font-semibold"
@@ -1206,7 +1200,7 @@ export default function Home() {
                       type="button"
                       aria-label="Move status down"
                     >
-                      ↓
+                      Down
                     </button>
                   </div>
                   <input
