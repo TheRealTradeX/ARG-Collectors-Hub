@@ -17,6 +17,7 @@ import {
   getNextDueDate,
   getNextFollowUpDate,
   getPaymentsToday,
+  getPriorityBucket,
   getPriorityLabel,
   getTouchBadge,
   getTouchedCount,
@@ -59,6 +60,7 @@ export default function Home() {
   const [needWorkOnly, setNeedWorkOnly] = useState(false);
   const [dueWeekOnly, setDueWeekOnly] = useState(false);
   const [increaseOnly, setIncreaseOnly] = useState(false);
+  const [priorityFilters, setPriorityFilters] = useState({ p0: false, p1: false, p2: false, p3: false });
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState("light");
@@ -166,7 +168,7 @@ export default function Home() {
     if (view !== "payments") return;
     const raf = requestAnimationFrame(updateKanbanScroll);
     return () => cancelAnimationFrame(raf);
-  }, [merchants, statuses, view, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly]);
+  }, [merchants, statuses, view, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, priorityFilters]);
 
   useEffect(() => {
     const handleResize = () => updateKanbanScroll();
@@ -188,8 +190,14 @@ export default function Home() {
       .filter((merchant) => (needWorkOnly ? isFollowUpOverdue(merchant) : true))
       .filter((merchant) => (dueWeekOnly ? isDueThisWeek(merchant) : true))
       .filter((merchant) => (increaseOnly ? Boolean(getIncreaseStatus(merchant)) : true))
+      .filter((merchant) => {
+        const anyPriority = Object.values(priorityFilters).some(Boolean);
+        if (!anyPriority) return true;
+        const bucket = getPriorityBucket(getAccountAgeDays(merchant));
+        return priorityFilters[bucket];
+      })
       .sort((a, b) => (a.status || "").localeCompare(b.status || "") || a.merchant.localeCompare(b.merchant));
-  }, [merchants, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly]);
+  }, [merchants, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, priorityFilters]);
 
   const monthTotal = useMemo(() => getMonthTotal(merchants, monthKey), [merchants, monthKey]);
   const paymentsToday = useMemo(() => getPaymentsToday(merchants), [merchants]);
@@ -386,6 +394,7 @@ export default function Home() {
   const openStatusModal = () => {
     setStatusEdits({});
     setNewStatusName("");
+    setShowControls(false);
     setShowStatusModal(true);
   };
 
@@ -716,7 +725,7 @@ export default function Home() {
                         <th className="py-3 pr-4">Priority</th>
                         <th className="py-3 pr-4">Last Worked</th>
                         <th className="py-3 pr-4">Follow-up</th>
-                        <th className="py-3 pr-4">Next Due</th>
+                        <th className="py-3 pr-4">Next Payment</th>
                         <th className="py-3 pr-4">Increase</th>
                         <th className="py-3 pr-4">Month Total</th>
                         <th className="py-3">Actions</th>
@@ -757,14 +766,16 @@ export default function Home() {
                                 {touchBadge.label}
                               </span>
                             </td>
-                            <td className="py-3 pr-4">
-                              <div className="flex flex-col gap-1">
-                                <span className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${followUpStatus.className}`}>
-                                  {followUpStatus.label}
-                                </span>
-                                <span className="text-[11px] text-steel/60">Next: {formatDisplayDate(nextFollowUp)}</span>
-                              </div>
-                            </td>
+                              <td className="py-3 pr-4">
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[11px] font-semibold text-steel/60">
+                                    {nextFollowUp ? formatDisplayDate(nextFollowUp) : "-"}
+                                  </span>
+                                  <span className={`rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${followUpStatus.className}`}>
+                                    {followUpStatus.label}
+                                  </span>
+                                </div>
+                              </td>
                             <td className="py-3 pr-4 text-steel/70">{nextDue ? formatDisplayDate(nextDue) : "-"}</td>
                             <td className="py-3 pr-4">
                               <div className="flex flex-col gap-1">
@@ -814,8 +825,8 @@ export default function Home() {
           {view === "payments" && (
             <section id="kanbanView">
               <div className="-mx-2 px-2 pb-2">
-                <div ref={topScrollRef} id="kanbanScrollTop" className="overflow-x-auto" onScroll={handleTopScroll}>
-                  <div ref={topScrollInnerRef} id="kanbanScrollTopInner" className="h-3 min-w-full"></div>
+                <div ref={topScrollRef} id="kanbanScrollTop" className="kanban-scroll-top overflow-x-auto" onScroll={handleTopScroll}>
+                  <div ref={topScrollInnerRef} id="kanbanScrollTopInner" className="h-2 min-w-full"></div>
                 </div>
               </div>
               <div
@@ -1295,8 +1306,8 @@ export default function Home() {
       )}
 
       {showStatusModal && (
-        <div id="statusModal" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-          <div className="glass w-full max-w-lg rounded-3xl p-6 shadow-xl">
+        <div id="statusModal" className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          <div className="glass w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-xl">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Manage Statuses</h2>
               <button id="closeStatusModal" className="text-xl text-steel/60" onClick={closeStatusModal}>
@@ -1376,8 +1387,8 @@ export default function Home() {
       )}
 
       {showControls && (
-        <div id="controlsModal" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-          <div className="glass w-full max-w-5xl rounded-3xl p-6 shadow-xl">
+        <div id="controlsModal" className="fixed inset-0 z-30 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          <div className="glass w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-xl">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.25em] text-steel/60">Controls</p>
@@ -1437,9 +1448,49 @@ export default function Home() {
                   <button
                     className="rounded-full border border-steel/10 bg-white/80 px-3 py-1 text-xs font-semibold text-steel/70"
                     onClick={openStatusModal}
+                    type="button"
                   >
                     Manage Statuses
                   </button>
+                </div>
+                <div className="flex flex-wrap gap-3 text-xs text-steel/70">
+                  <span className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Priority</span>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-emerald-500"
+                      checked={priorityFilters.p0}
+                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p0: !prev.p0 }))}
+                    />
+                    Priority 0 (0-14)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-sky-500"
+                      checked={priorityFilters.p1}
+                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p1: !prev.p1 }))}
+                    />
+                    Priority 1 (15-60)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-amber-500"
+                      checked={priorityFilters.p2}
+                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p2: !prev.p2 }))}
+                    />
+                    Priority 2 (61-179)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-rose-500"
+                      checked={priorityFilters.p3}
+                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p3: !prev.p3 }))}
+                    />
+                    Priority 3 (180+)
+                  </label>
                 </div>
                 <details className="text-xs text-steel/60">
                   <summary className="cursor-pointer font-semibold text-steel/70">CSV columns</summary>

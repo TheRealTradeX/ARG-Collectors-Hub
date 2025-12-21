@@ -225,9 +225,18 @@ const getDaysSinceTouched = (merchant) => {
   return Math.max(0, diffInDays(getToday(), base));
 };
 
+const getPriorityBucket = (ageDays) => {
+  if (ageDays <= 14) return "p0";
+  if (ageDays <= 60) return "p1";
+  if (ageDays <= 179) return "p2";
+  return "p3";
+};
+
 const getPriorityLabel = (ageDays) => {
-  if (ageDays <= 60) return "Priority 1 (0-60)";
-  if (ageDays <= 179) return "Priority 2 (61-179)";
+  const bucket = getPriorityBucket(ageDays);
+  if (bucket === "p0") return "Priority 0 (0-14)";
+  if (bucket === "p1") return "Priority 1 (15-60)";
+  if (bucket === "p2") return "Priority 2 (61-179)";
   return "Priority 3 (180+)";
 };
 
@@ -563,6 +572,7 @@ export {
   formatDisplayDate,
   displayDateValue,
   getAccountAgeDays,
+  getPriorityBucket,
   getPriorityLabel,
   getFollowUpStatus,
   getNextFollowUpDate,

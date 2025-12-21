@@ -100,6 +100,50 @@ body.theme-dark .followup-card {
   box-shadow: 0 16px 30px -24px rgba(15, 23, 42, 0.7);
 }
 
+#kanbanScrollTop {
+  scrollbar-width: thin;
+  scrollbar-color: #0e1116 rgba(15, 18, 24, 0.12);
+}
+
+#kanbanScrollTop.kanban-scroll-top {
+  padding-top: 2px;
+  padding-bottom: 6px;
+}
+
+#kanbanScrollTop::-webkit-scrollbar {
+  height: 8px;
+}
+
+#kanbanScrollTop::-webkit-scrollbar-track {
+  background: rgba(15, 18, 24, 0.08);
+  border-radius: 999px;
+}
+
+#kanbanScrollTop::-webkit-scrollbar-thumb {
+  background: #0e1116;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+}
+
+#kanbanScrollTop::-webkit-scrollbar-thumb:hover {
+  background: #05070b;
+}
+
+body.theme-dark .kanban-scroll-rail {
+  background: rgba(15, 17, 26, 0.86);
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: 0 16px 30px -24px rgba(5, 8, 18, 0.7);
+}
+
+body.theme-dark #kanbanScrollTop::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.08);
+}
+
+body.theme-dark #kanbanScrollTop::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border: 2px solid rgba(15, 23, 42, 0.5);
+}
+
 .fade-in {
   animation: fade 0.6s ease both;
 }
