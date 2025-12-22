@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_STATUSES,
   OPPORTUNITY_STAGES,
@@ -28,15 +28,14 @@ import {
   isDueThisWeek,
   isFollowUpOverdue,
   loadSidebarState,
-  loadStoredState,
   normalizeFrequency,
   parseCsvImport,
   parseMoney,
   persistSidebarState,
-  persistState,
   toDateKey,
   todayKey,
 } from "@/lib/arg-crm";
+import { supabase } from "@/lib/supabaseClient";
 
 const createId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -69,6 +68,13 @@ export default function Home() {
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState("light");
+  const [session, setSession] = useState(null);
+  const [authMode, setAuthMode] = useState("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   const [showMerchantModal, setShowMerchantModal] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState(null);
@@ -84,6 +90,7 @@ export default function Home() {
   const [statusEdits, setStatusEdits] = useState({});
   const [newStatusName, setNewStatusName] = useState("");
   const [showControls, setShowControls] = useState(false);
+  const [recentHistory, setRecentHistory] = useState([]);
 
   const boardRef = useRef(null);
   const topScrollRef = useRef(null);
@@ -94,26 +101,24 @@ export default function Home() {
   const opportunityBottomScrollRef = useRef(null);
   const isScrollSyncingRef = useRef(false);
   const fileInputRef = useRef(null);
+  const opportunitiesRef = useRef([]);
+  const lastViewLogRef = useRef({});
 
   useEffect(() => {
-    const saved = loadStoredState();
-    if (saved && saved.merchants) {
-      const savedStatuses = saved.statuses && saved.statuses.length ? saved.statuses : DEFAULT_STATUSES.slice();
-      const merchantStatuses = saved.merchants.map((merchant) => merchant.status || "Unsorted");
-      const mergedStatuses = ensureUnsortedStatus(Array.from(new Set(savedStatuses.concat(merchantStatuses))));
-      setMerchants(saved.merchants);
-      setStatuses(mergedStatuses);
-      setOpportunities(saved.opportunities || []);
-      return;
-    }
-    setMerchants([]);
-    setStatuses(ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
-    setOpportunities([]);
+    let isMounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) return;
+      setSession(data.session);
+      setIsDataLoading(false);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+    return () => {
+      isMounted = false;
+      data?.subscription?.unsubscribe();
+    };
   }, []);
-
-  useEffect(() => {
-    persistState(merchants, statuses, opportunities);
-  }, [merchants, statuses, opportunities]);
 
   useEffect(() => {
     const collapsed = loadSidebarState();
@@ -138,6 +143,109 @@ export default function Home() {
       window.localStorage.setItem("collectors_hub_theme", theme);
     }
   }, [theme]);
+
+  const loadSupabaseData = useCallback(async () => {
+    if (!session?.user?.id) return;
+    setIsDataLoading(true);
+    const userId = session.user.id;
+    const [accountsResult, opportunitiesResult, paymentsResult, historyResult] = await Promise.all([
+      supabase.from("accounts").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
+      supabase.from("opportunities").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
+      supabase.from("payments").select("*").eq("user_id", userId),
+      supabase.from("history_logs").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(10),
+    ]);
+
+    if (accountsResult.error) console.error("Accounts load error", accountsResult.error);
+    if (opportunitiesResult.error) console.error("Opportunities load error", opportunitiesResult.error);
+    if (paymentsResult.error) console.error("Payments load error", paymentsResult.error);
+    if (historyResult.error) console.error("History load error", historyResult.error);
+
+    const paymentsByAccount = {};
+    (paymentsResult.data || []).forEach((payment) => {
+      if (!paymentsByAccount[payment.account_id]) paymentsByAccount[payment.account_id] = [];
+      paymentsByAccount[payment.account_id].push({
+        date: payment.paid_date || "",
+        amount: parseMoney(payment.amount),
+      });
+    });
+
+    const loadedMerchants = (accountsResult.data || []).map((row) => ({
+      id: row.id,
+      merchant: row.merchant || "",
+      client: row.client || "",
+      status: row.status || "Unsorted",
+      startDate: row.start_date || "",
+      amount: row.amount || "",
+      type: row.type || "",
+      frequency: normalizeFrequency(row.frequency || ""),
+      increaseDate: row.increase_date || "",
+      notes: row.notes || "",
+      addedDate: row.added_date || "",
+      lastTouched: row.last_worked_at ? row.last_worked_at.split("T")[0] : "",
+      payments: paymentsByAccount[row.id] || [],
+    }));
+
+    const loadedStatuses = ensureUnsortedStatus(
+      Array.from(
+        new Set(DEFAULT_STATUSES.concat(loadedMerchants.map((merchant) => merchant.status || "Unsorted")))
+      )
+    );
+
+    const loadedOpportunities = (opportunitiesResult.data || []).map((row) => ({
+      id: row.id,
+      merchant: row.merchant || "",
+      client: row.client || "",
+      amount: row.amount || "",
+      type: row.type || "",
+      frequency: normalizeFrequency(row.frequency || ""),
+      startDate: row.start_date || "",
+      expectedCloseDate: row.expected_close_date || "",
+      stage: row.stage || OPPORTUNITY_STAGES[0],
+      paymentStatus: row.payment_status || "Unsorted",
+      notes: row.notes || "",
+      createdDate: row.created_at || "",
+      paymentPlanMadeAt: row.payment_plan_made_at || "",
+      convertedAccountId: row.converted_account_id || "",
+    }));
+
+    setMerchants(loadedMerchants);
+    setStatuses(loadedStatuses);
+    setOpportunities(loadedOpportunities);
+    setRecentHistory(historyResult.data || []);
+    setIsDataLoading(false);
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setMerchants([]);
+      setStatuses(ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
+      setOpportunities([]);
+      return;
+    }
+    loadSupabaseData();
+  }, [session?.user?.id, loadSupabaseData]);
+
+  useEffect(() => {
+    opportunitiesRef.current = opportunities;
+  }, [opportunities]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const timer = setInterval(async () => {
+      const cutoff = Date.now() - 30 * 60 * 1000;
+      const expired = opportunitiesRef.current.filter((opportunity) => {
+        if (opportunity.stage !== "Payment Plan Made") return false;
+        if (!opportunity.paymentPlanMadeAt) return false;
+        const time = new Date(opportunity.paymentPlanMadeAt).getTime();
+        return Number.isFinite(time) && time <= cutoff;
+      });
+      if (!expired.length) return;
+      const expiredIds = expired.map((item) => item.id);
+      await supabase.from("opportunities").delete().in("id", expiredIds).eq("user_id", session.user.id);
+      setOpportunities((prev) => prev.filter((item) => !expiredIds.includes(item.id)));
+    }, 60 * 1000);
+    return () => clearInterval(timer);
+  }, [session?.user?.id]);
 
   const handleTopScroll = () => {
     if (view !== "payments") return;
@@ -286,6 +394,33 @@ export default function Home() {
 
   const handleToggleSidebar = () => setSidebarCollapsed((prev) => !prev);
   const handleToggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  const handleAuthSubmit = async (event) => {
+    event.preventDefault();
+    setAuthError("");
+    setIsAuthLoading(true);
+    if (authMode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
+      });
+      if (error) setAuthError(error.message);
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPassword,
+      });
+      if (error) setAuthError(error.message);
+      if (!error) {
+        setAuthError("Check your email to confirm your account.");
+      }
+    }
+    setIsAuthLoading(false);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+  };
   const applyQuickFilter = (type) => {
     if (type === "overdue") {
       setNeedWorkOnly(true);
@@ -323,9 +458,12 @@ export default function Home() {
     event.currentTarget.style.transform = "";
   };
 
-  const openMerchantModal = (merchant = null) => {
+  const openMerchantModal = async (merchant = null) => {
     setEditingMerchant(merchant);
     setShowMerchantModal(true);
+    if (merchant?.id) {
+      await logAccountView(merchant.id, merchant.merchant);
+    }
   };
 
   const closeMerchantModal = () => {
@@ -343,7 +481,7 @@ export default function Home() {
     setShowOpportunityModal(false);
   };
 
-  const upsertOpportunity = (event) => {
+  const upsertOpportunity = async (event) => {
     event.preventDefault();
     const form = event.target;
     const formData = new FormData(form);
@@ -361,72 +499,211 @@ export default function Home() {
       notes: String(formData.get("notes") || "").trim(),
     };
 
-    if (!payload.merchant) return;
+    if (!payload.merchant || !session?.user?.id) return;
 
-    setOpportunities((prev) => {
-      const existingIndex = prev.findIndex((item) => item.id === payload.id);
-      if (existingIndex >= 0) {
-        const updated = [...prev];
-        updated[existingIndex] = { ...updated[existingIndex], ...payload };
-        return updated;
-      }
-      return [
-        ...prev,
-        {
-          ...payload,
-          id: createId(),
-          createdDate: todayKey(),
-        },
-      ];
-    });
+    const record = {
+      user_id: session.user.id,
+      merchant: payload.merchant,
+      client: payload.client,
+      amount: payload.amount,
+      type: payload.type,
+      frequency: payload.frequency,
+      start_date: payload.startDate,
+      expected_close_date: payload.expectedCloseDate,
+      stage: payload.stage,
+      payment_status: payload.paymentStatus,
+      notes: payload.notes,
+    };
 
+    if (payload.id) {
+      await supabase.from("opportunities").update(record).eq("id", payload.id).eq("user_id", session.user.id);
+    } else {
+      await supabase.from("opportunities").insert([record]);
+    }
+
+    await loadSupabaseData();
     closeOpportunityModal();
   };
 
-  const deleteOpportunity = (opportunityId) => {
+  const deleteOpportunity = async (opportunityId) => {
     const opportunity = opportunities.find((item) => item.id === opportunityId);
     if (!opportunity) return;
     if (!window.confirm(`Delete opportunity for ${opportunity.merchant}?`)) return;
+    if (!session?.user?.id) return;
+    await supabase.from("opportunities").delete().eq("id", opportunityId).eq("user_id", session.user.id);
     setOpportunities((prev) => prev.filter((item) => item.id !== opportunityId));
   };
 
-  const updateOpportunityStage = (opportunityId, stage) => {
-    setOpportunities((prev) =>
-      prev.map((opportunity) => (opportunity.id === opportunityId ? { ...opportunity, stage } : opportunity))
-    );
-  };
-
-  const convertOpportunityToAccount = (opportunity) => {
-    setMerchants((prev) => [
-      ...prev,
+  const logHistory = async ({ entityType, entityId, action, details }) => {
+    if (!session?.user?.id) return;
+    await supabase.from("history_logs").insert([
       {
-        id: createId(),
-        merchant: opportunity.merchant,
-        client: opportunity.client,
-        startDate: opportunity.startDate || "",
-        amount: opportunity.amount || "",
-        type: opportunity.type || "",
-        frequency: normalizeFrequency(opportunity.frequency || ""),
-        increaseDate: "",
-        status: opportunity.paymentStatus || "Unsorted",
-        notes: opportunity.notes ? `Converted from opportunity: ${opportunity.notes}` : "Converted from opportunity",
-        addedDate: todayKey(),
-        lastTouched: todayKey(),
-        payments: [],
+        user_id: session.user.id,
+        entity_type: entityType,
+        entity_id: entityId,
+        action,
+        details,
       },
     ]);
-
-    setStatuses((prev) =>
-      ensureUnsortedStatus(
-        prev.includes(opportunity.paymentStatus) || !opportunity.paymentStatus
-          ? [...prev]
-          : [...prev, opportunity.paymentStatus]
-      )
-    );
-    setOpportunities((prev) => prev.filter((item) => item.id !== opportunity.id));
+    const { data } = await supabase
+      .from("history_logs")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (data) setRecentHistory(data);
   };
 
-  const upsertMerchant = (event) => {
+  const touchAccount = async (accountId, action, details) => {
+    if (!session?.user?.id) return;
+    await supabase
+      .from("accounts")
+      .update({ last_worked_at: new Date().toISOString() })
+      .eq("id", accountId)
+      .eq("user_id", session.user.id);
+    await logHistory({
+      entityType: "account",
+      entityId: accountId,
+      action,
+      details,
+    });
+  };
+
+  const logAccountView = async (accountId, merchantName) => {
+    const now = Date.now();
+    const last = lastViewLogRef.current[accountId] || 0;
+    if (now - last < 30 * 60 * 1000) return;
+    lastViewLogRef.current[accountId] = now;
+    await touchAccount(accountId, "viewed", `Viewed ${merchantName}`);
+  };
+
+  const hasPaymentPlanCriteria = (opportunity) => {
+    return Boolean(
+      String(opportunity.amount || "").trim() &&
+        String(opportunity.frequency || "").trim() &&
+        String(opportunity.startDate || "").trim() &&
+        String(opportunity.paymentStatus || "").trim()
+    );
+  };
+
+  const createAccountFromOpportunity = async (opportunity) => {
+    if (!session?.user?.id) return null;
+    const payload = {
+      user_id: session.user.id,
+      merchant: opportunity.merchant,
+      client: opportunity.client,
+      status: opportunity.paymentStatus || "Unsorted",
+      start_date: opportunity.startDate || "",
+      amount: opportunity.amount || "",
+      type: opportunity.type || "",
+      frequency: normalizeFrequency(opportunity.frequency || ""),
+      increase_date: "",
+      notes: opportunity.notes ? `Converted from opportunity: ${opportunity.notes}` : "Converted from opportunity",
+      added_date: todayKey(),
+      last_worked_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from("accounts").insert([payload]).select("id").single();
+    if (error) {
+      console.error("Convert opportunity error", error);
+      window.alert("Unable to convert opportunity. Please try again.");
+      return null;
+    }
+    await logHistory({
+      entityType: "opportunity",
+      entityId: opportunity.id,
+      action: "converted_to_account",
+      details: `Converted to account ${data.id}`,
+    });
+    return data.id;
+  };
+
+  const updateOpportunityStage = async (opportunityId, stage) => {
+    const opportunity = opportunities.find((item) => item.id === opportunityId);
+    if (!opportunity || !session?.user?.id) return;
+
+    if (stage === "Payment Plan Made" && !hasPaymentPlanCriteria(opportunity)) {
+      window.alert("Payment Plan Made requires amount, frequency, start date, and status.");
+      return;
+    }
+
+    let convertedAccountId = opportunity.convertedAccountId || "";
+    let paymentPlanMadeAt = opportunity.paymentPlanMadeAt || "";
+
+    if (stage === "Payment Plan Made") {
+      if (!convertedAccountId) {
+        const createdId = await createAccountFromOpportunity(opportunity);
+        if (!createdId) return;
+        convertedAccountId = createdId;
+      }
+      paymentPlanMadeAt = new Date().toISOString();
+    }
+
+    await supabase
+      .from("opportunities")
+      .update({
+        stage,
+        payment_plan_made_at: paymentPlanMadeAt || null,
+        converted_account_id: convertedAccountId || null,
+      })
+      .eq("id", opportunityId)
+      .eq("user_id", session.user.id);
+
+    await logHistory({
+      entityType: "opportunity",
+      entityId: opportunityId,
+      action: "stage_change",
+      details: `Moved to ${stage}`,
+    });
+
+    await loadSupabaseData();
+  };
+
+  const convertOpportunityToAccount = async (opportunity) => {
+    if (!opportunity || !session?.user?.id) return;
+    if (!hasPaymentPlanCriteria(opportunity)) {
+      window.alert("Payment Plan Made requires amount, frequency, start date, and status.");
+      return;
+    }
+    const createdId = await createAccountFromOpportunity(opportunity);
+    if (!createdId) return;
+    await supabase
+      .from("opportunities")
+      .update({
+        stage: "Payment Plan Made",
+        payment_plan_made_at: new Date().toISOString(),
+        converted_account_id: createdId,
+      })
+      .eq("id", opportunity.id)
+      .eq("user_id", session.user.id);
+    await loadSupabaseData();
+  };
+
+  const convertAccountToOpportunity = async (merchant) => {
+    if (!merchant || !session?.user?.id) return;
+    const record = {
+      user_id: session.user.id,
+      merchant: merchant.merchant,
+      client: merchant.client,
+      amount: merchant.amount,
+      type: merchant.type,
+      frequency: normalizeFrequency(merchant.frequency || ""),
+      start_date: merchant.startDate || "",
+      expected_close_date: "",
+      stage: "Lead",
+      payment_status: merchant.status || "Unsorted",
+      notes: merchant.notes ? `Converted from account: ${merchant.notes}` : "Converted from account",
+    };
+    await supabase.from("opportunities").insert([record]);
+    await logHistory({
+      entityType: "account",
+      entityId: merchant.id,
+      action: "converted_to_opportunity",
+      details: "Converted to opportunity Lead",
+    });
+    await loadSupabaseData();
+  };
+
+  const upsertMerchant = async (event) => {
     event.preventDefault();
     const form = event.target;
     const formData = new FormData(form);
@@ -452,28 +729,34 @@ export default function Home() {
       lastTouched: String(formData.get("lastTouched") || "").trim(),
     };
 
-    if (!payload.merchant) return;
+    if (!payload.merchant || !session?.user?.id) return;
 
-    setMerchants((prev) => {
-      const existingIndex = prev.findIndex((item) => item.id === payload.id);
-      if (existingIndex >= 0) {
-        const updated = [...prev];
-        updated[existingIndex] = { ...updated[existingIndex], ...payload, status: payload.status };
-        return updated;
+    const record = {
+      user_id: session.user.id,
+      merchant: payload.merchant,
+      client: payload.client,
+      status: payload.status,
+      start_date: payload.startDate,
+      amount: payload.amount,
+      type: payload.type,
+      frequency: payload.frequency,
+      increase_date: payload.increaseDate,
+      notes: payload.notes,
+      added_date: payload.addedDate,
+      last_worked_at: payload.lastTouched || new Date().toISOString(),
+    };
+
+    if (payload.id) {
+      await supabase.from("accounts").update(record).eq("id", payload.id).eq("user_id", session.user.id);
+      await touchAccount(payload.id, "updated", `Updated ${payload.merchant}`);
+    } else {
+      const { data } = await supabase.from("accounts").insert([record]).select("id").single();
+      if (data?.id) {
+        await touchAccount(data.id, "created", `Created ${payload.merchant}`);
       }
-      return [
-        ...prev,
-        {
-          ...payload,
-          id: createId(),
-          status: payload.status,
-          lastTouched: payload.lastTouched || todayKey(),
-          payments: [],
-        },
-      ];
-    });
+    }
 
-    setStatuses((prev) => ensureUnsortedStatus(prev.includes(payload.status) ? [...prev] : [...prev, payload.status]));
+    await loadSupabaseData();
     closeMerchantModal();
   };
 
@@ -481,53 +764,100 @@ export default function Home() {
     const merchant = merchants.find((item) => item.id === merchantId);
     if (!merchant) return;
     if (!window.confirm(`Delete ${merchant.merchant}?`)) return;
+    if (!session?.user?.id) return;
+    supabase.from("payments").delete().eq("account_id", merchantId).eq("user_id", session.user.id);
+    supabase.from("accounts").delete().eq("id", merchantId).eq("user_id", session.user.id);
     setMerchants((prev) => prev.filter((item) => item.id !== merchantId));
   };
 
-  const addPayment = (event) => {
+  const addPayment = async (event) => {
     event.preventDefault();
     const amount = parseMoney(paymentAmount);
-    setMerchants((prev) =>
-      prev.map((merchant) => {
-        if (merchant.id !== paymentMerchantId) return merchant;
-        return {
-          ...merchant,
-          payments: [...merchant.payments, { date: paymentDate, amount }],
-          lastTouched: todayKey(),
-        };
-      })
-    );
+    if (!session?.user?.id) return;
+    await supabase.from("payments").insert([
+      {
+        user_id: session.user.id,
+        account_id: paymentMerchantId,
+        paid_date: paymentDate,
+        amount: String(amount),
+      },
+    ]);
+    await supabase
+      .from("accounts")
+      .update({ last_worked_at: new Date().toISOString() })
+      .eq("id", paymentMerchantId)
+      .eq("user_id", session.user.id);
+    await logHistory({
+      entityType: "account",
+      entityId: paymentMerchantId,
+      action: "payment_logged",
+      details: `Payment logged ${formatMoney(amount)}`,
+    });
+    await loadSupabaseData();
     setShowPaymentModal(false);
     setPaymentAmount("");
   };
 
-  const markTouched = (merchantId) => {
-    setMerchants((prev) =>
-      prev.map((merchant) => (merchant.id === merchantId ? { ...merchant, lastTouched: todayKey() } : merchant))
-    );
+  const markTouched = async (merchantId) => {
+    if (!session?.user?.id) return;
+    await supabase.from("accounts").update({ last_worked_at: new Date().toISOString() }).eq("id", merchantId).eq("user_id", session.user.id);
+    await logHistory({
+      entityType: "account",
+      entityId: merchantId,
+      action: "worked",
+      details: "Marked worked",
+    });
+    await loadSupabaseData();
   };
 
-  const moveMerchant = (merchantId, status) => {
-    setMerchants((prev) =>
-      prev.map((merchant) =>
-        merchant.id === merchantId ? { ...merchant, status, lastTouched: todayKey() } : merchant
-      )
-    );
+  const moveMerchant = async (merchantId, status) => {
+    if (!session?.user?.id) return;
+    await supabase
+      .from("accounts")
+      .update({ status, last_worked_at: new Date().toISOString() })
+      .eq("id", merchantId)
+      .eq("user_id", session.user.id);
+    await logHistory({
+      entityType: "account",
+      entityId: merchantId,
+      action: "status_change",
+      details: `Status moved to ${status}`,
+    });
+    await loadSupabaseData();
   };
 
   const handleImportCsv = (event) => {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = parseCsvImport(reader.result || "");
       if (result.error) {
         window.alert(result.error);
         return;
       }
       if (!window.confirm("Replace current data with this CSV import?")) return;
-      setMerchants(result.merchants);
-      setStatuses(ensureUnsortedStatus(result.statuses));
+      if (!session?.user?.id) return;
+      await supabase.from("payments").delete().eq("user_id", session.user.id);
+      await supabase.from("accounts").delete().eq("user_id", session.user.id);
+      const records = result.merchants.map((merchant) => ({
+        user_id: session.user.id,
+        merchant: merchant.merchant,
+        client: merchant.client,
+        status: merchant.status,
+        start_date: merchant.startDate,
+        amount: merchant.amount,
+        type: merchant.type,
+        frequency: merchant.frequency,
+        increase_date: merchant.increaseDate,
+        notes: merchant.notes,
+        added_date: merchant.addedDate,
+        last_worked_at: merchant.lastTouched,
+      }));
+      if (records.length) {
+        await supabase.from("accounts").insert(records);
+      }
+      await loadSupabaseData();
     };
     reader.readAsText(file);
     event.target.value = "";
@@ -543,8 +873,12 @@ export default function Home() {
     downloadBlob(csv, "Collectors Hub Template.csv");
   };
 
-  const resetData = () => {
+  const resetData = async () => {
     if (!window.confirm("Reset local data and clear imported accounts?")) return;
+    if (!session?.user?.id) return;
+    await supabase.from("payments").delete().eq("user_id", session.user.id);
+    await supabase.from("accounts").delete().eq("user_id", session.user.id);
+    await supabase.from("opportunities").delete().eq("user_id", session.user.id);
     setMerchants([]);
     setStatuses(ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
     setOpportunities([]);
@@ -569,26 +903,32 @@ export default function Home() {
 
   const closeStatusModal = () => setShowStatusModal(false);
 
-  const handleRenameStatus = (status) => {
+  const handleRenameStatus = async (status) => {
     const newValue = (statusEdits[status] || status).trim();
     if (!newValue || newValue === status) return;
     if (statuses.includes(newValue)) {
       window.alert("Status already exists.");
       return;
     }
-    setMerchants((prev) => prev.map((merchant) => (merchant.status === status ? { ...merchant, status: newValue } : merchant)));
-    setStatuses((prev) => ensureUnsortedStatus(prev.map((item) => (item === status ? newValue : item))));
+    if (!session?.user?.id) return;
+    await supabase.from("accounts").update({ status: newValue }).eq("status", status).eq("user_id", session.user.id);
     setStatusEdits((prev) => {
       const next = { ...prev };
       delete next[status];
       return next;
     });
+    await loadSupabaseData();
   };
 
-  const handleDeleteStatus = (status) => {
+  const handleDeleteStatus = async (status) => {
     if (status === "Unsorted") return;
-    setMerchants((prev) => prev.map((merchant) => (merchant.status === status ? { ...merchant, status: "Unsorted" } : merchant)));
-    setStatuses((prev) => ensureUnsortedStatus(prev.filter((item) => item !== status)));
+    if (!session?.user?.id) return;
+    await supabase
+      .from("accounts")
+      .update({ status: "Unsorted" })
+      .eq("status", status)
+      .eq("user_id", session.user.id);
+    await loadSupabaseData();
   };
 
   const handleAddStatus = (event) => {
@@ -635,6 +975,71 @@ export default function Home() {
     }
     return list;
   }, [statuses]);
+  if (isDataLoading && !session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-steel/60">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!session && !isDataLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 px-6 py-10">
+        <div className="mx-auto max-w-lg">
+          <div className="glass rounded-3xl p-8 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70 grid place-items-center">
+                <img src="/ARG Hub Logo.svg" alt="Collectors Hub" className="h-10 w-10 object-contain" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-steel/60">Collectors Hub</p>
+                <h1 className="text-2xl font-semibold">{authMode === "signin" ? "Sign in" : "Create account"}</h1>
+              </div>
+            </div>
+            <form className="mt-6 grid gap-4" onSubmit={handleAuthSubmit}>
+              <label className="text-sm">
+                Email
+                <input
+                  type="email"
+                  required
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Password
+                <input
+                  type="password"
+                  required
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              {authError && <p className="text-xs text-coral">{authError}</p>}
+              <button
+                type="submit"
+                disabled={isAuthLoading}
+                className="rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white shadow-glow"
+              >
+                {isAuthLoading ? "Please wait..." : authMode === "signin" ? "Sign in" : "Create account"}
+              </button>
+              <button
+                type="button"
+                className="text-sm text-steel/70"
+                onClick={() => setAuthMode((prev) => (prev === "signin" ? "signup" : "signin"))}
+              >
+                {authMode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen lg:flex">
       <aside
@@ -827,6 +1232,14 @@ export default function Home() {
                   Add Opportunity
                 </button>
               )}
+              {session && (
+                <button
+                  className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  onClick={handleSignOut}
+                >
+                  Sign out
+                </button>
+              )}
             </div>
           </header>
         </div>
@@ -974,6 +1387,42 @@ export default function Home() {
                         {formatMoney(Math.max(0, projectionTotals.expected - monthTotal))}
                       </span>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Recent Activity</p>
+                      <h2 className="mt-2 text-lg font-semibold">Latest Touches</h2>
+                    </div>
+                    <span className="rounded-full bg-ink/5 px-3 py-1 text-xs text-steel/70">
+                      {recentHistory.length} recent
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 text-sm text-steel/70">
+                    {recentHistory.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-steel/20 bg-white/60 px-4 py-4 text-center text-xs text-steel/60">
+                        No recent activity yet.
+                      </div>
+                    )}
+                    {recentHistory.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-steel/10 bg-white/60 px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-steel/60">{entry.entity_type}</p>
+                          <p className="font-semibold text-ink">{entry.action}</p>
+                          <p className="text-xs text-steel/60">{entry.details}</p>
+                        </div>
+                        <span className="text-xs text-steel/60">
+                          {entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1761,18 +2210,55 @@ export default function Home() {
                   </details>
                 </div>
               )}
+              {editingMerchant && (
+                <div className="md:col-span-2">
+                  <details className="rounded-2xl border border-steel/10 bg-white/70 px-4 py-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-steel/80">
+                      Activity history
+                    </summary>
+                    <div className="mt-3 space-y-2 text-sm text-steel/70">
+                      {recentHistory.filter((entry) => entry.entity_id === editingMerchant.id).length === 0 && (
+                        <p>No activity yet.</p>
+                      )}
+                      {recentHistory
+                        .filter((entry) => entry.entity_id === editingMerchant.id)
+                        .map((entry) => (
+                          <div key={entry.id} className="flex flex-col gap-1 border-b border-steel/10 pb-2 last:border-b-0">
+                            <span className="text-xs uppercase tracking-[0.2em] text-steel/60">{entry.action}</span>
+                            <span className="text-sm text-ink">{entry.details}</span>
+                            <span className="text-xs text-steel/60">
+                              {entry.created_at ? new Date(entry.created_at).toLocaleString() : ""}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </details>
+                </div>
+              )}
               <div className="md:col-span-2 flex justify-end gap-3">
                 {editingMerchant && (
-                  <button
-                    type="button"
-                    className="rounded-2xl border border-coral/20 px-4 py-2 text-sm text-coral"
-                    onClick={() => {
-                      deleteMerchant(editingMerchant.id);
-                      closeMerchantModal();
-                    }}
-                  >
-                    Delete
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="rounded-2xl border border-sky/30 px-4 py-2 text-sm text-sky"
+                      onClick={async () => {
+                        await convertAccountToOpportunity(editingMerchant);
+                        closeMerchantModal();
+                      }}
+                    >
+                      Convert
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-2xl border border-coral/20 px-4 py-2 text-sm text-coral"
+                      onClick={() => {
+                        deleteMerchant(editingMerchant.id);
+                        closeMerchantModal();
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </>
                 )}
                 <button type="button" id="cancelMerchant" className="rounded-2xl border border-steel/10 px-4 py-2 text-sm" onClick={closeMerchantModal}>
                   Cancel
