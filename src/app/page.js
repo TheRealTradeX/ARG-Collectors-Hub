@@ -90,6 +90,7 @@ export default function Home() {
   const [statusEdits, setStatusEdits] = useState({});
   const [newStatusName, setNewStatusName] = useState("");
   const [showControls, setShowControls] = useState(false);
+  const [showUserSettings, setShowUserSettings] = useState(false);
   const [recentHistory, setRecentHistory] = useState([]);
 
   const boardRef = useRef(null);
@@ -420,6 +421,21 @@ export default function Home() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
+  };
+
+  const handleOpenUserSettings = () => {
+    setView("settings");
+    setShowUserSettings(true);
+  };
+
+  const handleSendPasswordReset = async () => {
+    if (!session?.user?.email) return;
+    const { error } = await supabase.auth.resetPasswordForEmail(session.user.email);
+    if (error) {
+      window.alert(error.message);
+      return;
+    }
+    window.alert("Password reset email sent.");
   };
   const applyQuickFilter = (type) => {
     if (type === "overdue") {
@@ -1141,7 +1157,11 @@ export default function Home() {
           <div className="sidebar-tip rounded-2xl border border-steel/10 bg-white/70 p-4 text-xs text-steel/70">
             Tip: drag cards on the Kanban board to update status and track work automatically.
           </div>
-          <div className="sidebar-profile flex items-center gap-3 rounded-2xl border border-steel/10 bg-white/70 p-3">
+          <button
+            type="button"
+            className="sidebar-profile flex w-full items-center gap-3 rounded-2xl border border-steel/10 bg-white/70 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md"
+            onClick={handleOpenUserSettings}
+          >
             <div className="sidebar-avatar h-10 w-10 rounded-full bg-ink text-white grid place-items-center text-sm font-semibold">
               JP
             </div>
@@ -1149,7 +1169,7 @@ export default function Home() {
               <p className="sidebar-profile-name text-sm font-semibold text-ink">Jefrey Peralta</p>
               <p className="sidebar-profile-role text-xs text-steel/60">Accounts Manager</p>
             </div>
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -1195,25 +1215,11 @@ export default function Home() {
                     </span>
                   </button>
                   <button
-                    id="importCsv"
-                    className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                  >
-                    Import CSV
-                  </button>
-                  <button
                     data-action="toggleSidebar"
                     className="hidden"
                     aria-hidden="true"
                     tabIndex={-1}
                   />
-                  <button
-                    id="exportCsv"
-                    className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    onClick={handleExportCsv}
-                  >
-                    Export
-                  </button>
                   <button
                     id="addMerchant"
                     className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
@@ -1230,14 +1236,6 @@ export default function Home() {
                   onClick={() => openOpportunityModal()}
                 >
                   Add Opportunity
-                </button>
-              )}
-              {session && (
-                <button
-                  className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                  onClick={handleSignOut}
-                >
-                  Sign out
                 </button>
               )}
             </div>
@@ -1792,7 +1790,38 @@ export default function Home() {
           )}
           {view === "settings" && (
             <section id="settingsView">
-              <div className="grid gap-6 lg:grid-cols-2">
+              <div className="space-y-6">
+                {showUserSettings && (
+                  <div className="glass rounded-3xl px-6 py-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-steel/60">User Settings</p>
+                        <p className="mt-1 text-sm font-semibold text-ink">{session?.user?.email || "-"}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        <button
+                          className="rounded-full border border-steel/10 bg-white px-3 py-2 font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                          onClick={handleSendPasswordReset}
+                        >
+                          Send reset link
+                        </button>
+                        <button
+                          className="rounded-full border border-steel/10 bg-white px-3 py-2 font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                          onClick={handleSignOut}
+                        >
+                          Sign out
+                        </button>
+                        <button
+                          className="rounded-full border border-steel/10 bg-white px-3 py-2 font-semibold text-steel/70"
+                          onClick={() => setShowUserSettings(false)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="grid gap-6 lg:grid-cols-2">
                 <div className="glass rounded-3xl p-6 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div>
@@ -1864,9 +1893,14 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="glass rounded-3xl p-6 shadow-sm lg:col-span-2">
-                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Filters & Follow-up Focus</p>
-                  <h2 className="mt-2 text-lg font-semibold">Prioritize Work</h2>
+                <details className="glass rounded-3xl p-6 shadow-sm lg:col-span-2">
+                  <summary className="flex cursor-pointer items-center justify-between text-left">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Filters & Follow-up Focus</p>
+                      <h2 className="mt-2 text-lg font-semibold">Prioritize Work</h2>
+                    </div>
+                    <span className="rounded-full bg-ink/5 px-3 py-1 text-xs text-steel/70">Toggle</span>
+                  </summary>
                   <div className="mt-4 grid gap-6 lg:grid-cols-2">
                     <div className="space-y-4">
                       <input
@@ -1936,8 +1970,9 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </details>
               </div>
+            </div>
             </section>
           )}
         </main>
