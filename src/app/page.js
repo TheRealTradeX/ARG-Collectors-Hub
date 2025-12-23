@@ -97,6 +97,7 @@ export default function Home() {
   const [statusEdits, setStatusEdits] = useState({});
   const [newStatusName, setNewStatusName] = useState("");
   const [showControls, setShowControls] = useState(false);
+  const [draggedStatus, setDraggedStatus] = useState("");
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [recentHistory, setRecentHistory] = useState([]);
 
@@ -156,17 +157,19 @@ export default function Home() {
     if (!session?.user?.id) return;
     setIsDataLoading(true);
     const userId = session.user.id;
-    const [accountsResult, opportunitiesResult, paymentsResult, historyResult] = await Promise.all([
+    const [accountsResult, opportunitiesResult, paymentsResult, historyResult, statusesResult] = await Promise.all([
       supabase.from("accounts").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
       supabase.from("opportunities").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
       supabase.from("payments").select("*").eq("user_id", userId),
       supabase.from("history_logs").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(10),
+      supabase.from("statuses").select("*").eq("user_id", userId).order("sort_order", { ascending: true }),
     ]);
 
     if (accountsResult.error) console.error("Accounts load error", accountsResult.error);
     if (opportunitiesResult.error) console.error("Opportunities load error", opportunitiesResult.error);
     if (paymentsResult.error) console.error("Payments load error", paymentsResult.error);
     if (historyResult.error) console.error("History load error", historyResult.error);
+    if (statusesResult.error) console.error("Statuses load error", statusesResult.error);
 
     const paymentsByAccount = {};
     (paymentsResult.data || []).forEach((payment) => {
@@ -193,11 +196,22 @@ export default function Home() {
       payments: paymentsByAccount[row.id] || [],
     }));
 
-    const loadedStatuses = ensureUnsortedStatus(
-      Array.from(
-        new Set(DEFAULT_STATUSES.concat(loadedMerchants.map((merchant) => merchant.status || "Unsorted")))
-      )
+    const fallbackStatuses = ensureUnsortedStatus(
+      Array.from(new Set(DEFAULT_STATUSES.concat(loadedMerchants.map((merchant) => merchant.status || "Unsorted"))))
     );
+    let loadedStatuses = fallbackStatuses;
+
+    if (!statusesResult.error && statusesResult.data && statusesResult.data.length > 0) {
+      loadedStatuses = ensureUnsortedStatus(statusesResult.data.map((row) => row.name));
+    } else if (!statusesResult.error && statusesResult.data && statusesResult.data.length === 0) {
+      const seed = fallbackStatuses.map((name, index) => ({
+        user_id: userId,
+        name,
+        sort_order: index,
+      }));
+      await supabase.from("statuses").insert(seed);
+      loadedStatuses = fallbackStatuses;
+    }
 
     const loadedOpportunities = (opportunitiesResult.data || []).map((row) => ({
       id: row.id,
@@ -939,6 +953,7 @@ export default function Home() {
     await supabase.from("payments").delete().eq("user_id", session.user.id);
     await supabase.from("accounts").delete().eq("user_id", session.user.id);
     await supabase.from("opportunities").delete().eq("user_id", session.user.id);
+    await supabase.from("statuses").delete().eq("user_id", session.user.id);
     setMerchants([]);
     setStatuses(ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
     setOpportunities([]);
@@ -972,6 +987,11 @@ export default function Home() {
     }
     if (!session?.user?.id) return;
     await supabase.from("accounts").update({ status: newValue }).eq("status", status).eq("user_id", session.user.id);
+    await supabase
+      .from("statuses")
+      .update({ name: newValue })
+      .eq("name", status)
+      .eq("user_id", session.user.id);
     setStatusEdits((prev) => {
       const next = { ...prev };
       delete next[status];
@@ -988,10 +1008,11 @@ export default function Home() {
       .update({ status: "Unsorted" })
       .eq("status", status)
       .eq("user_id", session.user.id);
+    await supabase.from("statuses").delete().eq("name", status).eq("user_id", session.user.id);
     await loadSupabaseData();
   };
 
-  const handleAddStatus = (event) => {
+  const handleAddStatus = async (event) => {
     event.preventDefault();
     const trimmed = newStatusName.trim();
     if (!trimmed) return;
@@ -999,8 +1020,17 @@ export default function Home() {
       window.alert("Status already exists.");
       return;
     }
-    setStatuses((prev) => ensureUnsortedStatus([...prev, trimmed]));
+    if (!session?.user?.id) return;
+    const order = statuses.length;
+    await supabase.from("statuses").insert([
+      {
+        user_id: session.user.id,
+        name: trimmed,
+        sort_order: order,
+      },
+    ]);
     setNewStatusName("");
+    await loadSupabaseData();
   };
 
   const handleDrop = (event, status) => {
@@ -1009,21 +1039,27 @@ export default function Home() {
     moveMerchant(id, status);
   };
 
-  const moveStatus = (status, direction) => {
-    if (status === "Unsorted") return;
-    setStatuses((prev) => {
-      const list = [...prev];
-      const index = list.indexOf(status);
-      if (index === -1) return list;
-      const unsortedIndex = list.indexOf("Unsorted");
-      const maxIndex = unsortedIndex === -1 ? list.length - 1 : unsortedIndex - 1;
-      const targetIndex = direction === "up" ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex > maxIndex) return list;
-      const swap = list[targetIndex];
-      list[targetIndex] = status;
-      list[index] = swap;
-      return list;
-    });
+  const reorderStatuses = async (fromStatus, toStatus) => {
+    if (fromStatus === "Unsorted" || toStatus === "Unsorted") return;
+    const list = [...statuses];
+    const fromIndex = list.indexOf(fromStatus);
+    const toIndex = list.indexOf(toStatus);
+    if (fromIndex === -1 || toIndex === -1) return;
+    list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, fromStatus);
+    const unsortedIndex = list.indexOf("Unsorted");
+    if (unsortedIndex !== -1 && unsortedIndex !== list.length - 1) {
+      list.splice(unsortedIndex, 1);
+      list.push("Unsorted");
+    }
+    setStatuses(list);
+    if (!session?.user?.id) return;
+    const updates = list.map((name, index) => ({
+      user_id: session.user.id,
+      name,
+      sort_order: index,
+    }));
+    await supabase.from("statuses").upsert(updates, { onConflict: "user_id,name" });
   };
 
   const orderedStatuses = useMemo(() => {
@@ -2491,26 +2527,30 @@ export default function Home() {
                 <div
                   key={status}
                   className="flex items-center gap-2 rounded-2xl border border-steel/10 bg-white/70 px-3 py-2"
+                  draggable={status !== "Unsorted"}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/plain", status);
+                    setDraggedStatus(status);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const dragged = event.dataTransfer.getData("text/plain");
+                    if (dragged && dragged !== status) {
+                      reorderStatuses(dragged, status);
+                    }
+                    setDraggedStatus("");
+                  }}
                 >
-                  <div className="flex flex-col gap-1">
-                    <button
-                      className="rounded-full border border-steel/10 px-2 py-1 text-[10px] font-semibold"
-                      disabled={status === "Unsorted" || index === 0}
-                      onClick={() => moveStatus(status, "up")}
-                      type="button"
-                      aria-label="Move status up"
-                    >
-                      Up
-                    </button>
-                    <button
-                      className="rounded-full border border-steel/10 px-2 py-1 text-[10px] font-semibold"
-                      disabled={status === "Unsorted" || index === orderedStatuses.length - 1 || orderedStatuses[index + 1] === "Unsorted"}
-                      onClick={() => moveStatus(status, "down")}
-                      type="button"
-                      aria-label="Move status down"
-                    >
-                      Down
-                    </button>
+                  <div className={`cursor-grab rounded-full border border-steel/10 px-2 py-2 text-[10px] font-semibold ${draggedStatus === status ? "bg-ink/5" : ""}`}>
+                    <svg className="h-4 w-4 text-steel/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                      <circle cx="9" cy="7" r="1.5"></circle>
+                      <circle cx="15" cy="7" r="1.5"></circle>
+                      <circle cx="9" cy="12" r="1.5"></circle>
+                      <circle cx="15" cy="12" r="1.5"></circle>
+                      <circle cx="9" cy="17" r="1.5"></circle>
+                      <circle cx="15" cy="17" r="1.5"></circle>
+                    </svg>
                   </div>
                   <input
                     className="w-full bg-transparent text-sm text-ink focus:outline-none"
