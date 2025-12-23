@@ -955,7 +955,7 @@ export default function Home() {
   };
 
   const handleExportTemplate = () => {
-    const csv = exportTemplateCsv();
+    const csv = exportTemplateCsv(statuses);
     downloadBlob(csv, "ResolveOS Template.csv");
   };
 
@@ -1703,7 +1703,7 @@ export default function Home() {
                       <tr>
                         <th className="py-3 pr-4">Merchant</th>
                         <th className="py-3 pr-4">Client</th>
-                        <th className="py-3 pr-4">Status</th>
+                        <th className="py-3 pr-4">Collection Day</th>
                         <th className="py-3 pr-4">Start</th>
                         <th className="py-3 pr-4">Amount</th>
                         <th className="py-3 pr-4">Frequency</th>
@@ -2054,8 +2054,8 @@ export default function Home() {
                     </button>
                   </div>
                   <p className="mt-3 text-xs text-steel/60">
-                    Template columns: Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
-                Last Worked, Account Added Date.
+                    Template columns: Merchant, Client, Collection Day, Start Date, Amount, Type, Frequency, Increase / Fixed Until Paid, Notes,
+                    Account Age Days, Last Worked, Account Added Date.
                   </p>
                 </div>
 
@@ -2748,7 +2748,7 @@ export default function Home() {
                 <details className="text-xs text-steel/60">
                   <summary className="cursor-pointer font-semibold text-steel/70">CSV columns</summary>
                   <p className="mt-2">
-                    Merchant, Client, Status, Start Date, Amount, Type, Frequency, Increase Date, Notes, Account Age Days,
+                    Merchant, Client, Collection Day, Start Date, Amount, Type, Frequency, Increase / Fixed Until Paid, Notes, Account Age Days,
                     Last Worked, Account Added Date.
                   </p>
                 </details>

@@ -51,6 +51,8 @@ const HEADER_KEY_MAP = {
   "business name": "merchant",
   client: "client",
   status: "status",
+  "status column": "status",
+  "collection day": "status",
   "start date": "startDate",
   start: "startDate",
   amount: "amount",
@@ -580,22 +582,51 @@ const parseCsvImport = (text) => {
   return { merchants, statuses: Array.from(statuses) };
 };
 
-const exportTemplateCsv = () => {
+const exportTemplateCsv = (statuses = []) => {
+  const statusList = statuses.length ? statuses : DEFAULT_STATUSES;
+  const firstStatus = statusList[0] || "Unsorted";
+  const statusNotes = statusList.length ? `Collection Day options: ${statusList.join(" | ")}` : "";
   const headers = [
     "Merchant",
     "Client",
-    "Status",
+    "Collection Day",
     "Start Date",
     "Amount",
     "Type",
     "Frequency",
-    "Increase Date",
+    "Increase / Fixed Until Paid",
     "Notes",
     "Account Age Days",
     "Last Worked",
     "Account Added Date",
   ];
-  return `${headers.join(",")}\n`;
+  const exampleRow = [
+    "Example Merchant",
+    "Example Client",
+    firstStatus,
+    "2025-01-15",
+    "$1000",
+    "Credit",
+    "Weekly",
+    "2025-02-01",
+    statusNotes,
+    "0",
+    "",
+    "",
+  ];
+  return [headers, exampleRow]
+    .map((row) =>
+      row
+        .map((value) => {
+          const cell = value === undefined || value === null ? "" : String(value);
+          if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+            return `"${cell.replace(/"/g, '""')}"`;
+          }
+          return cell;
+        })
+        .join(",")
+    )
+    .join("\n");
 };
 
 const exportCsvData = (merchants, monthKey) => {
