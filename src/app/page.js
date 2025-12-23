@@ -1371,28 +1371,49 @@ export default function Home() {
         </div>
 
         {view === "accounts" && (
-        <section className="mt-4 space-y-3">
+          <section className="mt-4 space-y-3">
             <div className="stat-strip glass rounded-3xl px-4 py-3 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-3">
                   <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Today</p>
                   <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
                     {touchedCount} worked
                   </span>
                 </div>
+                <div className="flex w-full flex-1 justify-center">
+                  <div className="relative w-full max-w-xl">
+                    <svg
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel/50"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    >
+                      <circle cx="11" cy="11" r="7"></circle>
+                      <path d="M21 21l-3.5-3.5"></path>
+                    </svg>
+                    <input
+                      type="search"
+                      placeholder="Search merchant or client..."
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      className="w-full rounded-full border border-steel/10 bg-white/80 py-2 pl-9 pr-4 text-sm text-ink shadow-sm"
+                    />
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-3">
-                  <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
+                  <div className="stat-chip min-w-[150px] rounded-2xl border border-steel/10 bg-white/70 px-3 py-2">
                     <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Payments Logged</p>
                     <p className="text-base font-semibold">{formatMoney(paymentsToday)}</p>
                   </div>
-                  <div className="stat-chip rounded-2xl border border-steel/10 bg-white/70 px-3 py-2 min-w-[150px]">
+                  <div className="stat-chip min-w-[150px] rounded-2xl border border-steel/10 bg-white/70 px-3 py-2">
                     <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Month Total</p>
                     <p className="text-base font-semibold">{formatMoney(monthTotal)}</p>
                   </div>
                 </div>
               </div>
             </div>
-        </section>
+          </section>
         )}
 
         <main className="mt-6">
