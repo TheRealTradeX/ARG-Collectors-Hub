@@ -7,7 +7,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata = {
-  title: "ARG CRM",
+  title: "ResolveOS",
   description: "Collections hub for account management.",
 };
 
