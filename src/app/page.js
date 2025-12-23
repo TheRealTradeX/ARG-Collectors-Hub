@@ -1352,7 +1352,12 @@ export default function Home() {
         </div>
       </aside>
 
-      <div id="mainContent" className="flex-1 min-w-0 px-6 py-6 md:px-10">
+      <div
+        id="mainContent"
+        className={`flex-1 min-w-0 px-6 py-6 md:px-10 ${
+          view === "accounts" ? "h-screen overflow-hidden" : ""
+        }`}
+      >
         <input
           id="csvInput"
           ref={fileInputRef}
