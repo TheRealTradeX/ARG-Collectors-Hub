@@ -943,6 +943,11 @@ export default function Home() {
           return;
         }
         const records = result.merchants.map((merchant) => ({
+          last_worked_at: (() => {
+            if (!merchant.lastTouched) return null;
+            const parsed = new Date(merchant.lastTouched);
+            return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+          })(),
           user_id: session.user.id,
           merchant: merchant.merchant,
           client: merchant.client,
@@ -954,7 +959,6 @@ export default function Home() {
           increase_date: merchant.increaseDate,
           notes: merchant.notes,
           added_date: merchant.addedDate,
-          last_worked_at: merchant.lastTouched,
         }));
         if (records.length) {
           const { error: insertError } = await supabase.from("accounts").insert(records);
