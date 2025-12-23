@@ -72,9 +72,16 @@ export default function Home() {
   const [authMode, setAuthMode] = useState("signin");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [authFullName, setAuthFullName] = useState("");
+  const [authPhone, setAuthPhone] = useState("");
   const [authError, setAuthError] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
 
   const [showMerchantModal, setShowMerchantModal] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState(null);
@@ -225,6 +232,14 @@ export default function Home() {
     }
     loadSupabaseData();
   }, [session?.user?.id, loadSupabaseData]);
+
+  useEffect(() => {
+    if (session?.user) {
+      const meta = session.user.user_metadata || {};
+      setProfileName(meta.full_name || "");
+      setProfilePhone(meta.phone || "");
+    }
+  }, [session]);
 
   useEffect(() => {
     opportunitiesRef.current = opportunities;
@@ -409,6 +424,12 @@ export default function Home() {
       const { error } = await supabase.auth.signUp({
         email: authEmail,
         password: authPassword,
+        options: {
+          data: {
+            full_name: authFullName,
+            phone: authPhone,
+          },
+        },
       });
       if (error) setAuthError(error.message);
       if (!error) {
@@ -436,6 +457,29 @@ export default function Home() {
       return;
     }
     window.alert("Password reset email sent.");
+  };
+
+  const handleProfileSave = async (event) => {
+    event.preventDefault();
+    setIsProfileSaving(true);
+    setProfileMessage("");
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        full_name: profileName,
+        phone: profilePhone,
+      },
+    });
+    if (error) {
+      setProfileMessage(error.message);
+      setIsProfileSaving(false);
+      return;
+    }
+    if (data?.user) {
+      setSession((prev) => (prev ? { ...prev, user: data.user } : prev));
+    }
+    setProfileMessage("Profile updated.");
+    setIsProfileSaving(false);
+    setShowProfileEditor(false);
   };
   const applyQuickFilter = (type) => {
     if (type === "overdue") {
@@ -1014,6 +1058,30 @@ export default function Home() {
               </div>
             </div>
             <form className="mt-6 grid gap-4" onSubmit={handleAuthSubmit}>
+              {authMode === "signup" && (
+                <>
+                  <label className="text-sm">
+                    Full name
+                    <input
+                      type="text"
+                      required
+                      value={authFullName}
+                      onChange={(event) => setAuthFullName(event.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Phone number
+                    <input
+                      type="tel"
+                      required
+                      value={authPhone}
+                      onChange={(event) => setAuthPhone(event.target.value)}
+                      className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                    />
+                  </label>
+                </>
+              )}
               <label className="text-sm">
                 Email
                 <input
@@ -1163,10 +1231,17 @@ export default function Home() {
             onClick={handleOpenUserSettings}
           >
             <div className="sidebar-avatar h-10 w-10 rounded-full bg-ink text-white grid place-items-center text-sm font-semibold">
-              JP
+              {(profileName || session?.user?.email || "User")
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
             </div>
             <div>
-              <p className="sidebar-profile-name text-sm font-semibold text-ink">Jefrey Peralta</p>
+              <p className="sidebar-profile-name text-sm font-semibold text-ink">
+                {profileName || session?.user?.email || "User"}
+              </p>
               <p className="sidebar-profile-role text-xs text-steel/60">Accounts Manager</p>
             </div>
           </button>
@@ -1797,6 +1872,7 @@ export default function Home() {
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-steel/60">User Settings</p>
                         <p className="mt-1 text-sm font-semibold text-ink">{session?.user?.email || "-"}</p>
+                        {profileName && <p className="text-xs text-steel/60">{profileName}</p>}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 text-xs">
                         <button
@@ -1804,6 +1880,12 @@ export default function Home() {
                           onClick={handleSendPasswordReset}
                         >
                           Send reset link
+                        </button>
+                        <button
+                          className="rounded-full border border-steel/10 bg-white px-3 py-2 font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                          onClick={() => setShowProfileEditor((prev) => !prev)}
+                        >
+                          {showProfileEditor ? "Hide profile" : "Edit profile"}
                         </button>
                         <button
                           className="rounded-full border border-steel/10 bg-white px-3 py-2 font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
@@ -1819,6 +1901,36 @@ export default function Home() {
                         </button>
                       </div>
                     </div>
+                    {showProfileEditor && (
+                      <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={handleProfileSave}>
+                        <label className="text-xs text-steel/60">
+                          Full name
+                          <input
+                            className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm"
+                            value={profileName}
+                            onChange={(event) => setProfileName(event.target.value)}
+                          />
+                        </label>
+                        <label className="text-xs text-steel/60">
+                          Phone number
+                          <input
+                            className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm"
+                            value={profilePhone}
+                            onChange={(event) => setProfilePhone(event.target.value)}
+                          />
+                        </label>
+                        <div className="md:col-span-2 flex items-center justify-between">
+                          {profileMessage && <span className="text-xs text-steel/60">{profileMessage}</span>}
+                          <button
+                            type="submit"
+                            className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white shadow-glow"
+                            disabled={isProfileSaving}
+                          >
+                            {isProfileSaving ? "Saving..." : "Save profile"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 )}
                 <div className="grid gap-6 lg:grid-cols-2">
