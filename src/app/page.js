@@ -99,6 +99,7 @@ export default function Home() {
   const [showControls, setShowControls] = useState(false);
   const [draggedStatus, setDraggedStatus] = useState("");
   const [showUserSettings, setShowUserSettings] = useState(false);
+  const [showUnsortedKanban, setShowUnsortedKanban] = useState(true);
   const [recentHistory, setRecentHistory] = useState([]);
 
   const boardRef = useRef(null);
@@ -252,6 +253,7 @@ export default function Home() {
       const meta = session.user.user_metadata || {};
       setProfileName(meta.full_name || "");
       setProfilePhone(meta.phone || "");
+      setShowUnsortedKanban(meta.show_unsorted_kanban ?? true);
     }
   }, [session]);
 
@@ -456,6 +458,16 @@ export default function Home() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
+  };
+
+  const handleToggleUnsorted = async () => {
+    const nextValue = !showUnsortedKanban;
+    setShowUnsortedKanban(nextValue);
+    await supabase.auth.updateUser({
+      data: {
+        show_unsorted_kanban: nextValue,
+      },
+    });
   };
 
   const handleOpenUserSettings = () => {
@@ -944,7 +956,7 @@ export default function Home() {
 
   const handleExportTemplate = () => {
     const csv = exportTemplateCsv();
-    downloadBlob(csv, "Collectors Hub Template.csv");
+    downloadBlob(csv, "ResolveOS Template.csv");
   };
 
   const resetData = async () => {
@@ -1071,6 +1083,11 @@ export default function Home() {
     }
     return list;
   }, [statuses]);
+
+  const paymentStatuses = useMemo(() => {
+    if (showUnsortedKanban) return orderedStatuses;
+    return orderedStatuses.filter((status) => status !== "Unsorted");
+  }, [orderedStatuses, showUnsortedKanban]);
   if (isDataLoading && !session) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm text-steel/60">
@@ -1086,10 +1103,10 @@ export default function Home() {
           <div className="glass rounded-3xl p-8 shadow-xl">
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70 grid place-items-center">
-                <img src="/ARG Hub Logo.svg" alt="Collectors Hub" className="h-10 w-10 object-contain" />
+                <img src="/ARG Hub Logo.svg" alt="ResolveOS" className="h-10 w-10 object-contain" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-steel/60">Collectors Hub</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-steel/60">ResolveOS</p>
                 <h1 className="text-2xl font-semibold">{authMode === "signin" ? "Sign in" : "Create account"}</h1>
               </div>
             </div>
@@ -1171,7 +1188,7 @@ export default function Home() {
             <img src="/ARG Hub Logo.svg" alt="ARG Hub Logo" className="h-11 w-11 object-contain drop-shadow-[0_6px_12px_rgba(10,15,26,0.35)]" />
           </div>
           <div id="sidebarHeaderText">
-            <p className="text-sm font-semibold">Collections Hub</p>
+            <p className="text-sm font-semibold">ResolveOS</p>
           </div>
         </div>
         <nav className="mt-8 grid gap-2">
@@ -1772,6 +1789,21 @@ export default function Home() {
           )}
           {view === "payments" && (
             <section id="kanbanView">
+              <div className="mb-3 flex items-center justify-end">
+                <button
+                  className="rounded-full border border-steel/10 bg-white px-4 py-2 text-xs font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  onClick={handleToggleUnsorted}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                      {!showUnsortedKanban && <path d="M3 3l18 18"></path>}
+                    </svg>
+                    {showUnsortedKanban ? "Hide Unsorted" : "Show Unsorted"}
+                  </span>
+                </button>
+              </div>
               <div className="-mx-2 px-2 pb-2">
                 <div ref={topScrollRef} id="kanbanScrollTop" className="kanban-scroll-top overflow-x-auto" onScroll={handleTopScroll}>
                   <div ref={topScrollInnerRef} id="kanbanScrollTopInner" className="h-2 min-w-full"></div>
@@ -1784,7 +1816,7 @@ export default function Home() {
                 onScroll={handleBottomScroll}
               >
                 <div ref={boardRef} id="board" className="flex min-w-max gap-5">
-                  {orderedStatuses.map((status) => {
+                  {paymentStatuses.map((status) => {
                     const statusMerchants = filteredMerchants.filter(
                       (merchant) => (merchant.status || "Unsorted") === status
                     );
@@ -2114,7 +2146,7 @@ export default function Home() {
                         className="w-full rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-semibold text-steel/70"
                         onClick={openStatusModal}
                       >
-                        Manage Statuses
+                        Manage Collection Days
                       </button>
                     </div>
                   </div>
@@ -2212,7 +2244,7 @@ export default function Home() {
                 />
               </label>
               <label className="text-sm">
-                Kanban Status
+                Collection Day
                 <select
                   name="paymentStatus"
                   defaultValue={editingOpportunity?.paymentStatus || "Unsorted"}
@@ -2505,7 +2537,7 @@ export default function Home() {
         <div id="statusModal" className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-4">
           <div className="glass w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-xl">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Manage Statuses</h2>
+              <h2 className="text-xl font-semibold">Manage Collection Days</h2>
               <button id="closeStatusModal" className="text-xl text-steel/60" onClick={closeStatusModal}>
                 &times;
               </button>
@@ -2513,13 +2545,13 @@ export default function Home() {
             <form id="addStatusForm" className="mt-4 flex flex-wrap gap-3" onSubmit={handleAddStatus}>
               <input
                 id="newStatusName"
-                placeholder="New status name"
+                placeholder="New collection day name"
                 className="flex-1 rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm"
                 value={newStatusName}
                 onChange={(event) => setNewStatusName(event.target.value)}
               />
               <button type="submit" className="rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white">
-                Add Status
+                Add Collection Day
               </button>
             </form>
             <div id="statusList" className="mt-4 grid gap-2">
@@ -2650,7 +2682,7 @@ export default function Home() {
                     onClick={openStatusModal}
                     type="button"
                   >
-                    Manage Statuses
+                    Manage Collection Days
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-3 text-xs text-steel/70">

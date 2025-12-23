@@ -1,6 +1,6 @@
-# Collectors Hub
+# ResolveOS
 
-Collectors Hub is a modern collections workspace that turns spreadsheets into a living command center. Track accounts, log payments, manage follow-up cadence, and surface what matters most in seconds.
+ResolveOS is a modern collections workspace that turns spreadsheets into a living command center. Track accounts, log payments, manage follow-up cadence, and surface what matters most in seconds.
 
 Built for growing collections teams, it supports:
 - CSV-first onboarding for clean, repeatable imports

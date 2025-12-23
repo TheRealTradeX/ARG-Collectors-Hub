@@ -8,7 +8,7 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata = {
   title: "ResolveOS",
-  description: "Collections hub for account management.",
+  description: "ResolveOS collections platform for account management.",
 };
 
 export default function RootLayout({ children }) {
