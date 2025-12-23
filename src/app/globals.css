@@ -401,6 +401,15 @@ body.theme-dark.bg-gradient-to-br {
   background: #0b0d13 !important;
 }
 
+body.theme-dark .auth-shell {
+  background: #0b0d13;
+}
+
+body.theme-dark .auth-logo {
+  background: #ffffff;
+  box-shadow: 0 10px 24px -16px rgba(15, 23, 42, 0.65);
+}
+
 body.theme-dark .glass {
   background: rgba(15, 17, 26, 0.8);
   border-color: rgba(148, 163, 184, 0.15);

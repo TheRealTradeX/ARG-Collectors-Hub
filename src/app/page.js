@@ -1098,11 +1098,11 @@ export default function Home() {
 
   if (!session && !isDataLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 px-6 py-10">
-        <div className="mx-auto max-w-lg">
+      <div className="auth-shell min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 px-6 py-10 flex items-center justify-center">
+        <div className="w-full max-w-lg">
           <div className="glass rounded-3xl p-8 shadow-xl">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70 grid place-items-center">
+              <div className="auth-logo h-12 w-12 rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70 grid place-items-center">
                 <img src="/ARG Hub Logo.svg" alt="ResolveOS" className="h-10 w-10 object-contain" />
               </div>
               <div>
