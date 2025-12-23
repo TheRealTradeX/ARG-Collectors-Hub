@@ -101,6 +101,7 @@ export default function Home() {
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [showUnsortedKanban, setShowUnsortedKanban] = useState(true);
   const [recentHistory, setRecentHistory] = useState([]);
+  const [importNotice, setImportNotice] = useState(null);
 
   const boardRef = useRef(null);
   const topScrollRef = useRef(null);
@@ -129,6 +130,12 @@ export default function Home() {
       data?.subscription?.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!importNotice) return undefined;
+    const timer = setTimeout(() => setImportNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [importNotice]);
 
   useEffect(() => {
     const collapsed = loadSidebarState();
@@ -917,33 +924,53 @@ export default function Home() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
-      const result = parseCsvImport(reader.result || "");
-      if (result.error) {
-        window.alert(result.error);
-        return;
+      try {
+        const result = parseCsvImport(reader.result || "");
+        if (result.error) {
+          setImportNotice({ type: "error", message: result.error });
+          return;
+        }
+        if (!window.confirm("Replace current data with this CSV import?")) return;
+        if (!session?.user?.id) return;
+        const { error: paymentsError } = await supabase.from("payments").delete().eq("user_id", session.user.id);
+        if (paymentsError) {
+          setImportNotice({ type: "error", message: paymentsError.message });
+          return;
+        }
+        const { error: accountsDeleteError } = await supabase.from("accounts").delete().eq("user_id", session.user.id);
+        if (accountsDeleteError) {
+          setImportNotice({ type: "error", message: accountsDeleteError.message });
+          return;
+        }
+        const records = result.merchants.map((merchant) => ({
+          user_id: session.user.id,
+          merchant: merchant.merchant,
+          client: merchant.client,
+          status: merchant.status,
+          start_date: merchant.startDate,
+          amount: merchant.amount,
+          type: merchant.type,
+          frequency: merchant.frequency,
+          increase_date: merchant.increaseDate,
+          notes: merchant.notes,
+          added_date: merchant.addedDate,
+          last_worked_at: merchant.lastTouched,
+        }));
+        if (records.length) {
+          const { error: insertError } = await supabase.from("accounts").insert(records);
+          if (insertError) {
+            setImportNotice({ type: "error", message: insertError.message });
+            return;
+          }
+        }
+        await loadSupabaseData();
+        setImportNotice({ type: "success", message: `Imported ${records.length} accounts.` });
+      } catch (error) {
+        setImportNotice({
+          type: "error",
+          message: error?.message || "Import failed. Please try again.",
+        });
       }
-      if (!window.confirm("Replace current data with this CSV import?")) return;
-      if (!session?.user?.id) return;
-      await supabase.from("payments").delete().eq("user_id", session.user.id);
-      await supabase.from("accounts").delete().eq("user_id", session.user.id);
-      const records = result.merchants.map((merchant) => ({
-        user_id: session.user.id,
-        merchant: merchant.merchant,
-        client: merchant.client,
-        status: merchant.status,
-        start_date: merchant.startDate,
-        amount: merchant.amount,
-        type: merchant.type,
-        frequency: merchant.frequency,
-        increase_date: merchant.increaseDate,
-        notes: merchant.notes,
-        added_date: merchant.addedDate,
-        last_worked_at: merchant.lastTouched,
-      }));
-      if (records.length) {
-        await supabase.from("accounts").insert(records);
-      }
-      await loadSupabaseData();
     };
     reader.readAsText(file);
     event.target.value = "";
@@ -1302,6 +1329,26 @@ export default function Home() {
       </aside>
 
       <div id="mainContent" className="flex-1 min-w-0 px-6 py-6 md:px-10">
+        <input
+          id="csvInput"
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={handleImportCsv}
+        />
+        {importNotice && (
+          <div
+            className={`fixed right-6 top-6 z-50 max-w-sm rounded-2xl border px-4 py-3 text-sm shadow-lg backdrop-blur ${
+              importNotice.type === "error"
+                ? "border-coral/30 bg-coral/10 text-coral"
+                : "border-emerald-200/60 bg-emerald-50/80 text-emerald-700"
+            }`}
+            role="status"
+          >
+            {importNotice.message}
+          </div>
+        )}
         <div className="top-header sticky top-0 z-20 -mx-6 border-b border-white/70 bg-white/85 px-6 pb-4 pt-5 backdrop-blur-xl md:-mx-10 md:px-10 md:pb-6 md:pt-6">
           <header className="flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -1320,14 +1367,6 @@ export default function Home() {
             <div className="flex flex-wrap items-center gap-3">
               {(view === "accounts" || view === "payments") && (
                 <>
-                  <input
-                    id="csvInput"
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    className="hidden"
-                    onChange={handleImportCsv}
-                  />
                   <button
                     id="openControls"
                     className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
