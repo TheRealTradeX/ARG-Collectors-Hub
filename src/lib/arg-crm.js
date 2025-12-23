@@ -295,7 +295,7 @@ const getFollowUpStatus = (merchant) => {
     return { label: "No activity", className: "bg-slate-100 text-slate-600" };
   }
   if (daysSinceTouched >= 7) {
-    return { label: "Public risk", className: "bg-red-100 text-red-700" };
+    return { label: "At risk", className: "bg-red-100 text-red-700" };
   }
   const interval = getFollowUpIntervalDays(ageDays);
   if (daysSinceTouched >= interval) {

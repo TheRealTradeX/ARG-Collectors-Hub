@@ -980,6 +980,26 @@ export default function Home() {
     event.target.value = "";
   };
 
+  const formatCurrencyInput = (event) => {
+    const raw = String(event.target.value || "").trim();
+    if (!raw) {
+      event.target.value = "";
+      return;
+    }
+    const amount = parseMoney(raw);
+    event.target.value = formatMoney(amount);
+  };
+
+  const formatPaymentInput = () => {
+    const raw = String(paymentAmount || "").trim();
+    if (!raw) {
+      setPaymentAmount("");
+      return;
+    }
+    const amount = parseMoney(raw);
+    setPaymentAmount(formatMoney(amount));
+  };
+
   const handleExportCsv = () => {
     const csv = exportCsvData(merchants, monthKey);
     downloadBlob(csv, `arg-crm-${monthKey}.csv`);
@@ -1736,13 +1756,18 @@ export default function Home() {
               <div className="glass rounded-3xl p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-semibold">Accounts List</h2>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-lg font-semibold">Accounts List</h2>
+                      <span className="rounded-full border border-steel/10 bg-white/70 px-3 py-1 text-xs font-semibold text-steel/70">
+                        {filteredMerchants.length} accounts
+                      </span>
+                    </div>
                     <p className="text-xs text-steel/60">List view of all merchants and statuses.</p>
                   </div>
                 </div>
-                <div className="mt-4 overflow-x-auto">
+                <div className="mt-4 max-h-[calc(100vh-22rem)] min-h-[clamp(24rem,48vh,46rem)] overflow-x-auto overflow-y-auto">
                   <table className="min-w-full text-sm">
-                    <thead className="text-left text-xs uppercase tracking-wider text-steel/60">
+                    <thead className="sticky top-0 z-20 bg-white/90 text-left text-xs uppercase tracking-wider text-steel/60 backdrop-blur">
                       <tr>
                         <th className="py-3 pr-4">Merchant</th>
                         <th className="py-3 pr-4">Client</th>
@@ -2257,6 +2282,8 @@ export default function Home() {
                 <input
                   name="amount"
                   defaultValue={editingOpportunity?.amount || ""}
+                  inputMode="decimal"
+                  onBlur={formatCurrencyInput}
                   className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
                 />
               </label>
@@ -2402,6 +2429,8 @@ export default function Home() {
                 <input
                   name="amount"
                   defaultValue={editingMerchant?.amount || ""}
+                  inputMode="decimal"
+                  onBlur={formatCurrencyInput}
                   className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
                 />
               </label>
@@ -2576,11 +2605,12 @@ export default function Home() {
                 Amount
                 <input
                   id="paymentAmount"
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   required
                   value={paymentAmount}
                   onChange={(event) => setPaymentAmount(event.target.value)}
+                  onBlur={formatPaymentInput}
                   className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
                 />
               </label>
