@@ -1101,12 +1101,12 @@ export default function Home() {
       <div className="auth-shell min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50 px-6 py-10 flex items-center justify-center">
         <div className="w-full max-w-lg">
           <div className="glass rounded-3xl p-8 shadow-xl">
-            <div className="flex items-center gap-3">
-              <div className="auth-logo h-12 w-12 rounded-2xl bg-white/90 shadow-sm ring-1 ring-white/70 grid place-items-center">
-                <img src="/ARG Hub Logo.svg" alt="ResolveOS" className="h-10 w-10 object-contain" />
+            <div className="flex items-center gap-4">
+              <div className="auth-logo h-14 w-14 rounded-2xl shadow-sm ring-1 ring-white/70 grid place-items-center">
+                <img src="/ARG Hub Logo.svg" alt="ResolveOS" className="h-11 w-11 object-contain drop-shadow-[0_8px_16px_rgba(10,15,26,0.35)]" />
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-steel/60">ResolveOS</p>
+                <p className="auth-brand text-sm uppercase tracking-[0.32em]">ResolveOS</p>
                 <h1 className="text-2xl font-semibold">{authMode === "signin" ? "Sign in" : "Create account"}</h1>
               </div>
             </div>
@@ -1184,11 +1184,11 @@ export default function Home() {
         className="glass min-h-screen w-full border-b border-white/70 px-6 py-6 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:border-b-0 lg:border-r flex flex-col"
       >
         <div id="sidebarHeader" className="flex items-center gap-3">
-          <div className="sidebar-logo h-12 w-12 rounded-2xl bg-white/95 text-white grid place-items-center shadow-sm ring-1 ring-white/70">
+          <div className="sidebar-logo h-12 w-12 rounded-2xl text-white grid place-items-center shadow-sm ring-1 ring-white/70">
             <img src="/ARG Hub Logo.svg" alt="ARG Hub Logo" className="h-11 w-11 object-contain drop-shadow-[0_6px_12px_rgba(10,15,26,0.35)]" />
           </div>
           <div id="sidebarHeaderText">
-            <p className="text-sm font-semibold">ResolveOS</p>
+            <p className="app-brand text-base">ResolveOS</p>
           </div>
         </div>
         <nav className="mt-8 grid gap-2">

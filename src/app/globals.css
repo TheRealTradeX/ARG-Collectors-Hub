@@ -405,10 +405,38 @@ body.theme-dark .auth-shell {
   background: #0b0d13;
 }
 
-body.theme-dark .auth-logo {
+.auth-logo {
   background: #ffffff;
+}
+
+.sidebar-logo {
+  background: #ffffff;
+}
+
+.auth-brand {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+ .app-brand {
+  color: #0f172a;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+body.theme-dark .auth-logo {
   box-shadow: 0 10px 24px -16px rgba(15, 23, 42, 0.65);
 }
+
+body.theme-dark .auth-brand {
+  color: rgba(226, 232, 240, 0.92);
+}
+
+body.theme-dark .app-brand {
+  color: rgba(226, 232, 240, 0.92);
+}
+
 
 body.theme-dark .glass {
   background: rgba(15, 17, 26, 0.8);
