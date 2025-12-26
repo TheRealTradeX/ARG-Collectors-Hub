@@ -64,6 +64,7 @@ export default function Home() {
   const [needWorkOnly, setNeedWorkOnly] = useState(false);
   const [dueWeekOnly, setDueWeekOnly] = useState(false);
   const [increaseOnly, setIncreaseOnly] = useState(false);
+  const [unsortedOnly, setUnsortedOnly] = useState(false);
   const [priorityFilters, setPriorityFilters] = useState({ p0: false, p1: false, p2: false, p3: false });
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -101,6 +102,7 @@ export default function Home() {
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [showUnsortedKanban, setShowUnsortedKanban] = useState(true);
   const [recentHistory, setRecentHistory] = useState([]);
+  const [ageTick, setAgeTick] = useState(0);
   const [importNotice, setImportNotice] = useState(null);
 
   const boardRef = useRef(null);
@@ -117,8 +119,14 @@ export default function Home() {
 
   useEffect(() => {
     let isMounted = true;
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
       if (!isMounted) return;
+      if (error && String(error.message || "").toLowerCase().includes("refresh token")) {
+        supabase.auth.signOut();
+        setSession(null);
+        setIsDataLoading(false);
+        return;
+      }
       setSession(data.session);
       setIsDataLoading(false);
     });
@@ -130,6 +138,31 @@ export default function Home() {
       data?.subscription?.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const msUntilMidnight = nextMidnight.getTime() - now.getTime();
+    const timeout = setTimeout(() => {
+      setAgeTick((value) => value + 1);
+      const interval = setInterval(() => setAgeTick((value) => value + 1), 24 * 60 * 60 * 1000);
+      return () => clearInterval(interval);
+    }, msUntilMidnight);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id) return undefined;
+    const interval = setInterval(async () => {
+      const { error } = await supabase.auth.getSession();
+      if (error && String(error.message || "").toLowerCase().includes("refresh token")) {
+        await supabase.auth.signOut();
+        setSession(null);
+      }
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [session]);
 
   useEffect(() => {
     if (!importNotice) return undefined;
@@ -183,6 +216,7 @@ export default function Home() {
     (paymentsResult.data || []).forEach((payment) => {
       if (!paymentsByAccount[payment.account_id]) paymentsByAccount[payment.account_id] = [];
       paymentsByAccount[payment.account_id].push({
+        id: payment.id,
         date: payment.paid_date || "",
         amount: parseMoney(payment.amount),
       });
@@ -396,6 +430,7 @@ export default function Home() {
       .filter((merchant) => (needWorkOnly ? isFollowUpOverdue(merchant) : true))
       .filter((merchant) => (dueWeekOnly ? isDueThisWeek(merchant) : true))
       .filter((merchant) => (increaseOnly ? Boolean(getIncreaseStatus(merchant)) : true))
+      .filter((merchant) => (unsortedOnly ? (merchant.status || "Unsorted") === "Unsorted" : true))
       .filter((merchant) => {
         const anyPriority = Object.values(priorityFilters).some(Boolean);
         if (!anyPriority) return true;
@@ -403,18 +438,18 @@ export default function Home() {
         return priorityFilters[bucket];
       })
       .sort((a, b) => (a.status || "").localeCompare(b.status || "") || a.merchant.localeCompare(b.merchant));
-  }, [merchants, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, priorityFilters]);
+  }, [merchants, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, unsortedOnly, priorityFilters, ageTick]);
 
   const monthTotal = useMemo(() => getMonthTotal(merchants, monthKey), [merchants, monthKey]);
   const paymentsToday = useMemo(() => getPaymentsToday(merchants), [merchants]);
   const touchedCount = useMemo(() => getTouchedCount(merchants), [merchants]);
-  const overdueCount = useMemo(() => merchants.filter((merchant) => isFollowUpOverdue(merchant)).length, [merchants]);
-  const dueWeekCount = useMemo(() => merchants.filter((merchant) => isDueThisWeek(merchant)).length, [merchants]);
+  const overdueCount = useMemo(() => merchants.filter((merchant) => isFollowUpOverdue(merchant)).length, [merchants, ageTick]);
+  const dueWeekCount = useMemo(() => merchants.filter((merchant) => isDueThisWeek(merchant)).length, [merchants, ageTick]);
   const increaseCount = useMemo(
     () => merchants.filter((merchant) => Boolean(getIncreaseStatus(merchant))).length,
-    [merchants]
+    [merchants, ageTick]
   );
-  const projectionTotals = useMemo(() => getMonthlyProjectionTotals(merchants, monthKey), [merchants, monthKey]);
+  const projectionTotals = useMemo(() => getMonthlyProjectionTotals(merchants, monthKey), [merchants, monthKey, ageTick]);
   const opportunityForecast = useMemo(
     () => getOpportunityForecastTotal(opportunities),
     [opportunities]
@@ -853,14 +888,50 @@ export default function Home() {
     closeMerchantModal();
   };
 
-  const deleteMerchant = (merchantId) => {
+  const deleteMerchant = async (merchantId) => {
     const merchant = merchants.find((item) => item.id === merchantId);
     if (!merchant) return;
     if (!window.confirm(`Delete ${merchant.merchant}?`)) return;
     if (!session?.user?.id) return;
-    supabase.from("payments").delete().eq("account_id", merchantId).eq("user_id", session.user.id);
-    supabase.from("accounts").delete().eq("id", merchantId).eq("user_id", session.user.id);
-    setMerchants((prev) => prev.filter((item) => item.id !== merchantId));
+    const { error: paymentsError } = await supabase
+      .from("payments")
+      .delete()
+      .eq("account_id", merchantId)
+      .eq("user_id", session.user.id);
+    if (paymentsError) {
+      window.alert(paymentsError.message);
+      return;
+    }
+    const { error: accountsError } = await supabase
+      .from("accounts")
+      .delete()
+      .eq("id", merchantId)
+      .eq("user_id", session.user.id);
+    if (accountsError) {
+      window.alert(accountsError.message);
+      return;
+    }
+    await loadSupabaseData();
+  };
+
+  const deletePayment = async (paymentId, accountId) => {
+    if (!session?.user?.id) return;
+    const { error } = await supabase
+      .from("payments")
+      .delete()
+      .eq("id", paymentId)
+      .eq("user_id", session.user.id);
+    if (error) {
+      window.alert(error.message);
+      return;
+    }
+    await logHistory({
+      entityType: "account",
+      entityId: accountId,
+      action: "payment_deleted",
+      details: "Payment deleted",
+    });
+    await loadSupabaseData();
   };
 
   const addPayment = async (event) => {
@@ -2221,6 +2292,15 @@ export default function Home() {
                           />
                           Increase due
                         </label>
+                        <label className="flex items-center gap-2 text-sm text-steel/70">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-slate-500"
+                            checked={unsortedOnly}
+                            onChange={(event) => setUnsortedOnly(event.target.checked)}
+                          />
+                          Unsorted only
+                        </label>
                       </div>
                     </div>
                     <div className="space-y-4">
@@ -2511,9 +2591,20 @@ export default function Home() {
                           .slice()
                           .sort((a, b) => (a.date < b.date ? 1 : -1))
                           .map((payment, index) => (
-                            <div key={`${payment.date}-${payment.amount}-${index}`} className="flex items-center justify-between">
-                              <span>{displayDateValue(payment.date)}</span>
-                              <span className="font-semibold text-ink">{formatMoney(payment.amount)}</span>
+                            <div key={`${payment.id || payment.date}-${payment.amount}-${index}`} className="flex items-center justify-between gap-2">
+                              <div className="flex flex-col">
+                                <span>{displayDateValue(payment.date)}</span>
+                                <span className="font-semibold text-ink">{formatMoney(payment.amount)}</span>
+                              </div>
+                              {payment.id && (
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-coral/20 px-3 py-1 text-xs font-semibold text-coral"
+                                  onClick={() => deletePayment(payment.id, editingMerchant.id)}
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           ))
                       ) : (
@@ -2775,6 +2866,15 @@ export default function Home() {
                       onChange={(event) => setIncreaseOnly(event.target.checked)}
                     />
                     Increase due
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-slate-500"
+                      checked={unsortedOnly}
+                      onChange={(event) => setUnsortedOnly(event.target.checked)}
+                    />
+                    Unsorted only
                   </label>
                   <button
                     className="rounded-full border border-steel/10 bg-white/80 px-3 py-1 text-xs font-semibold text-steel/70"
