@@ -37,11 +37,6 @@ import {
 } from "@/lib/arg-crm";
 import { supabase } from "@/lib/supabaseClient";
 
-const createId = () => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
 const downloadBlob = (content, filename) => {
   const blob = new Blob([content], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
@@ -54,12 +49,37 @@ const downloadBlob = (content, filename) => {
   URL.revokeObjectURL(url);
 };
 
+const parseMonthKey = (value) => {
+  const [yearRaw, monthRaw] = String(value || "").split("-");
+  const year = Number.parseInt(yearRaw, 10);
+  const month = Number.parseInt(monthRaw, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return { year, month };
+};
+
+const monthDiff = (startKey, endKey) => {
+  const start = parseMonthKey(startKey);
+  const end = parseMonthKey(endKey);
+  if (!start || !end) return 0;
+  return (end.year - start.year) * 12 + (end.month - start.month);
+};
+
+const monthKeyFromDate = (dateValue) => {
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
 export default function Home() {
+  const TAG_OPTIONS = ["Bankruptcy", "Answer Filed"];
   const [merchants, setMerchants] = useState([]);
   const [statuses, setStatuses] = useState(DEFAULT_STATUSES.slice());
   const [opportunities, setOpportunities] = useState([]);
   const [view, setView] = useState("accounts");
   const [search, setSearch] = useState("");
+  const [tagFilters, setTagFilters] = useState([]);
   const [touchedOnly, setTouchedOnly] = useState(false);
   const [needWorkOnly, setNeedWorkOnly] = useState(false);
   const [dueWeekOnly, setDueWeekOnly] = useState(false);
@@ -86,13 +106,19 @@ export default function Home() {
 
   const [showMerchantModal, setShowMerchantModal] = useState(false);
   const [editingMerchant, setEditingMerchant] = useState(null);
+  const [merchantTagsDraft, setMerchantTagsDraft] = useState([]);
+  const [linkedOpportunities, setLinkedOpportunities] = useState([]);
+  const [showOpportunityLink, setShowOpportunityLink] = useState(false);
   const [showOpportunityModal, setShowOpportunityModal] = useState(false);
   const [editingOpportunity, setEditingOpportunity] = useState(null);
+  const [opportunityTagsDraft, setOpportunityTagsDraft] = useState([]);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMerchantId, setPaymentMerchantId] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayKey());
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [isPaymentSaving, setIsPaymentSaving] = useState(false);
+  const [showQuickPaymentModal, setShowQuickPaymentModal] = useState(false);
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusEdits, setStatusEdits] = useState({});
@@ -102,6 +128,13 @@ export default function Home() {
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [showUnsortedKanban, setShowUnsortedKanban] = useState(true);
   const [recentHistory, setRecentHistory] = useState([]);
+  const [historyPayments, setHistoryPayments] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [monthlyGoalBase, setMonthlyGoalBase] = useState("");
+  const [monthlyGoalStartMonth, setMonthlyGoalStartMonth] = useState(currentMonthKey());
+  const [lastResetMonth, setLastResetMonth] = useState("");
+  const [isGoalSaving, setIsGoalSaving] = useState(false);
+  const [csvImportMode, setCsvImportMode] = useState("replace");
   const [ageTick, setAgeTick] = useState(0);
   const [importNotice, setImportNotice] = useState(null);
 
@@ -113,6 +146,7 @@ export default function Home() {
   const opportunityTopScrollInnerRef = useRef(null);
   const opportunityBottomScrollRef = useRef(null);
   const isScrollSyncingRef = useRef(false);
+  const isResettingRef = useRef(false);
   const fileInputRef = useRef(null);
   const opportunitiesRef = useRef([]);
   const lastViewLogRef = useRef({});
@@ -194,16 +228,37 @@ export default function Home() {
     }
   }, [theme]);
 
+  const normalizeTags = useCallback((value) => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+        } catch {
+          return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
+        }
+      }
+      return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+    return [];
+  }, []);
+
   const loadSupabaseData = useCallback(async () => {
     if (!session?.user?.id) return;
     setIsDataLoading(true);
     const userId = session.user.id;
-    const [accountsResult, opportunitiesResult, paymentsResult, historyResult, statusesResult] = await Promise.all([
+    const [accountsResult, opportunitiesResult, paymentsResult, historyResult, statusesResult, settingsResult, historyPaymentsResult] = await Promise.all([
       supabase.from("accounts").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
       supabase.from("opportunities").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
       supabase.from("payments").select("*").eq("user_id", userId),
       supabase.from("history_logs").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(10),
       supabase.from("statuses").select("*").eq("user_id", userId).order("sort_order", { ascending: true }),
+      supabase.from("monthly_settings").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("payments_history").select("*").eq("user_id", userId),
     ]);
 
     if (accountsResult.error) console.error("Accounts load error", accountsResult.error);
@@ -211,6 +266,8 @@ export default function Home() {
     if (paymentsResult.error) console.error("Payments load error", paymentsResult.error);
     if (historyResult.error) console.error("History load error", historyResult.error);
     if (statusesResult.error) console.error("Statuses load error", statusesResult.error);
+    if (settingsResult?.error) console.error("Monthly settings load error", settingsResult.error);
+    if (historyPaymentsResult?.error) console.error("Payments history load error", historyPaymentsResult.error);
 
     const paymentsByAccount = {};
     (paymentsResult.data || []).forEach((payment) => {
@@ -235,6 +292,7 @@ export default function Home() {
       notes: row.notes || "",
       addedDate: row.added_date || "",
       lastTouched: row.last_worked_at ? row.last_worked_at.split("T")[0] : "",
+      tags: normalizeTags(row.tags),
       payments: paymentsByAccount[row.id] || [],
     }));
 
@@ -270,14 +328,26 @@ export default function Home() {
       createdDate: row.created_at || "",
       paymentPlanMadeAt: row.payment_plan_made_at || "",
       convertedAccountId: row.converted_account_id || "",
+      tags: normalizeTags(row.tags),
     }));
+
+    const settings = settingsResult?.data || null;
+    if (settings) {
+      setMonthlyGoalBase(settings.base_goal ? String(settings.base_goal) : "");
+      setMonthlyGoalStartMonth(settings.base_goal_month || currentMonthKey());
+      setLastResetMonth(settings.last_reset_month || "");
+    } else {
+      setMonthlyGoalStartMonth((value) => value || currentMonthKey());
+    }
+
+    setHistoryPayments(historyPaymentsResult?.data || []);
 
     setMerchants(loadedMerchants);
     setStatuses(loadedStatuses);
     setOpportunities(loadedOpportunities);
     setRecentHistory(historyResult.data || []);
     setIsDataLoading(false);
-  }, [session?.user?.id]);
+  }, [session?.user?.id, normalizeTags]);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -288,6 +358,7 @@ export default function Home() {
     }
     loadSupabaseData();
   }, [session?.user?.id, loadSupabaseData]);
+
 
   useEffect(() => {
     if (session?.user) {
@@ -426,6 +497,7 @@ export default function Home() {
           (merchant.client || "").toLowerCase().includes(term)
         );
       })
+      .filter((merchant) => (tagFilters.length ? tagFilters.some((tag) => (merchant.tags || []).includes(tag)) : true))
       .filter((merchant) => (touchedOnly ? merchant.lastTouched === todayKey() : true))
       .filter((merchant) => (needWorkOnly ? isFollowUpOverdue(merchant) : true))
       .filter((merchant) => (dueWeekOnly ? isDueThisWeek(merchant) : true))
@@ -438,7 +510,7 @@ export default function Home() {
         return priorityFilters[bucket];
       })
       .sort((a, b) => (a.status || "").localeCompare(b.status || "") || a.merchant.localeCompare(b.merchant));
-  }, [merchants, search, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, unsortedOnly, priorityFilters, ageTick]);
+  }, [merchants, search, tagFilters, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, unsortedOnly, priorityFilters, ageTick]);
 
   const monthTotal = useMemo(() => getMonthTotal(merchants, monthKey), [merchants, monthKey]);
   const paymentsToday = useMemo(() => getPaymentsToday(merchants), [merchants]);
@@ -450,24 +522,134 @@ export default function Home() {
     [merchants, ageTick]
   );
   const projectionTotals = useMemo(() => getMonthlyProjectionTotals(merchants, monthKey), [merchants, monthKey, ageTick]);
+  const currentGoal = useMemo(() => {
+    const base = parseMoney(monthlyGoalBase);
+    if (!base) return 0;
+    const diff = monthDiff(monthlyGoalStartMonth || monthKey, monthKey);
+    return base + diff * 10000;
+  }, [monthlyGoalBase, monthlyGoalStartMonth, monthKey]);
+  const historyByMonth = useMemo(() => {
+    const totals = {};
+    (historyPayments || []).forEach((payment) => {
+      const key = payment.month_key || monthKeyFromDate(payment.paid_date);
+      if (!key) return;
+      totals[key] = (totals[key] || 0) + parseMoney(payment.amount);
+    });
+    return Object.entries(totals)
+      .sort(([a], [b]) => (a < b ? 1 : -1))
+      .map(([key, total]) => ({ key, total }));
+  }, [historyPayments]);
   const opportunityForecast = useMemo(
     () => getOpportunityForecastTotal(opportunities),
     [opportunities]
   );
+  const filteredOpportunities = useMemo(() => {
+    return opportunities.filter((opportunity) => {
+      const term = search.trim().toLowerCase();
+      const matchesSearch = !term ||
+        opportunity.merchant.toLowerCase().includes(term) ||
+        (opportunity.client || "").toLowerCase().includes(term);
+      const matchesTags = !tagFilters.length || tagFilters.some((tag) => (opportunity.tags || []).includes(tag));
+      return matchesSearch && matchesTags;
+    });
+  }, [opportunities, search, tagFilters]);
+
   const opportunitiesByStage = useMemo(() => {
     const grouped = {};
     OPPORTUNITY_STAGES.forEach((stage) => {
       grouped[stage] = [];
     });
-    opportunities.forEach((opportunity) => {
+    filteredOpportunities.forEach((opportunity) => {
       const stage = OPPORTUNITY_STAGES.includes(opportunity.stage) ? opportunity.stage : OPPORTUNITY_STAGES[0];
       grouped[stage].push(opportunity);
     });
     return grouped;
-  }, [opportunities]);
+  }, [filteredOpportunities]);
 
   const handleToggleSidebar = () => setSidebarCollapsed((prev) => !prev);
   const handleToggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  const toggleTagFilter = (tag) =>
+    setTagFilters((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : prev.concat(tag)));
+  const saveMonthlySettings = async () => {
+    if (!session?.user?.id) return;
+    const baseGoal = parseMoney(monthlyGoalBase);
+    setIsGoalSaving(true);
+    const payload = {
+      user_id: session.user.id,
+      base_goal: baseGoal,
+      base_goal_month: monthlyGoalStartMonth || currentMonthKey(),
+      last_reset_month: lastResetMonth || currentMonthKey(),
+    };
+    const { error } = await supabase.from("monthly_settings").upsert(payload, { onConflict: "user_id" });
+    if (error) {
+      window.alert(error.message);
+    } else {
+      setMonthlyGoalBase(baseGoal ? String(baseGoal) : "");
+    }
+    setIsGoalSaving(false);
+  };
+
+  const maybeResetMonthlyPayments = useCallback(async () => {
+    if (!session?.user?.id) return;
+    if (isResettingRef.current) return;
+    const currentMonth = currentMonthKey();
+    if (lastResetMonth === currentMonth) return;
+    isResettingRef.current = true;
+    try {
+      const startOfMonth = `${currentMonth}-01`;
+      const { data: oldPayments, error } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .lt("paid_date", startOfMonth);
+      if (error) {
+        console.error("Monthly reset fetch error", error);
+        return;
+      }
+      if (oldPayments && oldPayments.length) {
+        const accountLookup = merchants.reduce((acc, merchant) => {
+          acc[merchant.id] = merchant;
+          return acc;
+        }, {});
+        const historyRows = oldPayments.map((payment) => {
+          const account = accountLookup[payment.account_id] || {};
+          return {
+            user_id: session.user.id,
+            account_id: payment.account_id,
+            paid_date: payment.paid_date,
+            amount: payment.amount,
+            month_key: monthKeyFromDate(payment.paid_date),
+            merchant: account.merchant || "",
+            client: account.client || "",
+          };
+        });
+        await supabase.from("payments_history").insert(historyRows);
+        await supabase
+          .from("payments")
+          .delete()
+          .eq("user_id", session.user.id)
+          .lt("paid_date", startOfMonth);
+      }
+      const settingsPayload = {
+        user_id: session.user.id,
+        base_goal: parseMoney(monthlyGoalBase),
+        base_goal_month: monthlyGoalStartMonth || currentMonth,
+        last_reset_month: currentMonth,
+      };
+      await supabase.from("monthly_settings").upsert(settingsPayload, { onConflict: "user_id" });
+      setLastResetMonth(currentMonth);
+      if (oldPayments && oldPayments.length) {
+        await loadSupabaseData();
+      }
+    } finally {
+      isResettingRef.current = false;
+    }
+  }, [session?.user?.id, lastResetMonth, monthlyGoalBase, monthlyGoalStartMonth, merchants, loadSupabaseData]);
+
+  useEffect(() => {
+    if (!session?.user?.id || isDataLoading) return;
+    maybeResetMonthlyPayments();
+  }, [session?.user?.id, isDataLoading, maybeResetMonthlyPayments]);
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
     setAuthError("");
@@ -588,6 +770,9 @@ export default function Home() {
 
   const openMerchantModal = async (merchant = null) => {
     setEditingMerchant(merchant);
+    setMerchantTagsDraft(merchant?.tags || []);
+    setLinkedOpportunities([]);
+    setShowOpportunityLink(false);
     setShowMerchantModal(true);
     if (merchant?.id) {
       await logAccountView(merchant.id, merchant.merchant);
@@ -601,6 +786,7 @@ export default function Home() {
 
   const openOpportunityModal = (opportunity = null) => {
     setEditingOpportunity(opportunity);
+    setOpportunityTagsDraft(opportunity?.tags || []);
     setShowOpportunityModal(true);
   };
 
@@ -625,6 +811,7 @@ export default function Home() {
       stage: String(formData.get("stage") || "").trim() || OPPORTUNITY_STAGES[0],
       paymentStatus: String(formData.get("paymentStatus") || "").trim(),
       notes: String(formData.get("notes") || "").trim(),
+      tags: opportunityTagsDraft,
     };
 
     if (!payload.merchant || !session?.user?.id) return;
@@ -641,6 +828,7 @@ export default function Home() {
       stage: payload.stage,
       payment_status: payload.paymentStatus,
       notes: payload.notes,
+      tags: payload.tags,
     };
 
     if (payload.id) {
@@ -729,6 +917,7 @@ export default function Home() {
       notes: opportunity.notes ? `Converted from opportunity: ${opportunity.notes}` : "Converted from opportunity",
       added_date: todayKey(),
       last_worked_at: new Date().toISOString(),
+      tags: opportunity.tags || [],
     };
     const { data, error } = await supabase.from("accounts").insert([payload]).select("id").single();
     if (error) {
@@ -764,6 +953,12 @@ export default function Home() {
         convertedAccountId = createdId;
       }
       paymentPlanMadeAt = new Date().toISOString();
+    }
+
+    if (stage !== "Payment Plan Made" && convertedAccountId) {
+      await supabase.from("accounts").delete().eq("id", convertedAccountId).eq("user_id", session.user.id);
+      convertedAccountId = "";
+      paymentPlanMadeAt = "";
     }
 
     await supabase
@@ -810,6 +1005,7 @@ export default function Home() {
     if (!merchant || !session?.user?.id) return;
     const record = {
       user_id: session.user.id,
+      account_id: merchant.id,
       merchant: merchant.merchant,
       client: merchant.client,
       amount: merchant.amount,
@@ -820,6 +1016,7 @@ export default function Home() {
       stage: "Lead",
       payment_status: merchant.status || "Unsorted",
       notes: merchant.notes ? `Converted from account: ${merchant.notes}` : "Converted from account",
+      tags: merchant.tags || [],
     };
     await supabase.from("opportunities").insert([record]);
     await logHistory({
@@ -855,6 +1052,7 @@ export default function Home() {
       notes: String(formData.get("notes") || "").trim(),
       addedDate,
       lastTouched: String(formData.get("lastTouched") || "").trim(),
+      tags: merchantTagsDraft,
     };
 
     if (!payload.merchant || !session?.user?.id) return;
@@ -872,6 +1070,7 @@ export default function Home() {
       notes: payload.notes,
       added_date: payload.addedDate,
       last_worked_at: payload.lastTouched || new Date().toISOString(),
+      tags: payload.tags,
     };
 
     if (payload.id) {
@@ -934,32 +1133,80 @@ export default function Home() {
     await loadSupabaseData();
   };
 
+  const openLinkedOpportunities = async () => {
+    if (!editingMerchant?.id || !session?.user?.id) return;
+    const { data, error } = await supabase
+      .from("opportunities")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .eq("account_id", editingMerchant.id)
+      .order("created_at", { ascending: false });
+    if (error) {
+      window.alert(error.message);
+      return;
+    }
+    const mapped = (data || []).map((row) => ({
+      id: row.id,
+      merchant: row.merchant || "",
+      client: row.client || "",
+      amount: row.amount || "",
+      type: row.type || "",
+      frequency: normalizeFrequency(row.frequency || ""),
+      startDate: row.start_date || "",
+      expectedCloseDate: row.expected_close_date || "",
+      stage: row.stage || OPPORTUNITY_STAGES[0],
+      paymentStatus: row.payment_status || "Unsorted",
+      notes: row.notes || "",
+      createdDate: row.created_at || "",
+      paymentPlanMadeAt: row.payment_plan_made_at || "",
+      convertedAccountId: row.converted_account_id || "",
+      tags: normalizeTags(row.tags),
+    }));
+    setLinkedOpportunities(mapped);
+    setShowOpportunityLink(true);
+  };
+
+  const getAccountDedupKey = (merchant) => {
+    const merchantName = String(merchant.merchant || "").trim().toLowerCase();
+    const clientName = String(merchant.client || "").trim().toLowerCase();
+    const startDate = String(merchant.startDate || "").trim();
+    const amount = String(parseMoney(merchant.amount || "")).trim();
+    return `${merchantName}|${clientName}|${startDate}|${amount}`;
+  };
+
   const addPayment = async (event) => {
     event.preventDefault();
+    if (isPaymentSaving) return;
     const amount = parseMoney(paymentAmount);
     if (!session?.user?.id) return;
-    await supabase.from("payments").insert([
-      {
-        user_id: session.user.id,
-        account_id: paymentMerchantId,
-        paid_date: paymentDate,
-        amount: String(amount),
-      },
-    ]);
-    await supabase
-      .from("accounts")
-      .update({ last_worked_at: new Date().toISOString() })
-      .eq("id", paymentMerchantId)
-      .eq("user_id", session.user.id);
-    await logHistory({
-      entityType: "account",
-      entityId: paymentMerchantId,
-      action: "payment_logged",
-      details: `Payment logged ${formatMoney(amount)}`,
-    });
-    await loadSupabaseData();
-    setShowPaymentModal(false);
-    setPaymentAmount("");
+    setIsPaymentSaving(true);
+    try {
+      await supabase.from("payments").insert([
+        {
+          user_id: session.user.id,
+          account_id: paymentMerchantId,
+          paid_date: paymentDate,
+          amount: String(amount),
+        },
+      ]);
+      await supabase
+        .from("accounts")
+        .update({ last_worked_at: new Date().toISOString() })
+        .eq("id", paymentMerchantId)
+        .eq("user_id", session.user.id);
+      await logHistory({
+        entityType: "account",
+        entityId: paymentMerchantId,
+        action: "payment_logged",
+        details: `Payment logged ${formatMoney(amount)}`,
+      });
+      await loadSupabaseData();
+      setShowPaymentModal(false);
+      setShowQuickPaymentModal(false);
+      setPaymentAmount("");
+    } finally {
+      setIsPaymentSaving(false);
+    }
   };
 
   const markTouched = async (merchantId) => {
@@ -1001,19 +1248,36 @@ export default function Home() {
           setImportNotice({ type: "error", message: result.error });
           return;
         }
-        if (!window.confirm("Replace current data with this CSV import?")) return;
+        const confirmMessage =
+          csvImportMode === "append"
+            ? "Append this CSV to existing accounts? Duplicate rows will be skipped."
+            : "Reset and replace all existing accounts with this CSV?";
+        if (!window.confirm(confirmMessage)) return;
         if (!session?.user?.id) return;
-        const { error: paymentsError } = await supabase.from("payments").delete().eq("user_id", session.user.id);
-        if (paymentsError) {
-          setImportNotice({ type: "error", message: paymentsError.message });
-          return;
+        if (csvImportMode === "replace") {
+          const { error: paymentsError } = await supabase.from("payments").delete().eq("user_id", session.user.id);
+          if (paymentsError) {
+            setImportNotice({ type: "error", message: paymentsError.message });
+            return;
+          }
+          const { error: accountsDeleteError } = await supabase.from("accounts").delete().eq("user_id", session.user.id);
+          if (accountsDeleteError) {
+            setImportNotice({ type: "error", message: accountsDeleteError.message });
+            return;
+          }
         }
-        const { error: accountsDeleteError } = await supabase.from("accounts").delete().eq("user_id", session.user.id);
-        if (accountsDeleteError) {
-          setImportNotice({ type: "error", message: accountsDeleteError.message });
-          return;
-        }
-        const records = result.merchants.map((merchant) => ({
+        const existingKeys = new Set(
+          csvImportMode === "append" ? merchants.map((merchant) => getAccountDedupKey(merchant)) : []
+        );
+        const records = result.merchants
+          .filter((merchant) => {
+            if (csvImportMode !== "append") return true;
+            const key = getAccountDedupKey(merchant);
+            if (existingKeys.has(key)) return false;
+            existingKeys.add(key);
+            return true;
+          })
+          .map((merchant) => ({
           last_worked_at: (() => {
             if (!merchant.lastTouched) return null;
             const parsed = new Date(merchant.lastTouched);
@@ -1039,7 +1303,8 @@ export default function Home() {
           }
         }
         await loadSupabaseData();
-        setImportNotice({ type: "success", message: `Imported ${records.length} accounts.` });
+        const verb = csvImportMode === "append" ? "Appended" : "Imported";
+        setImportNotice({ type: "success", message: `${verb} ${records.length} accounts.` });
       } catch (error) {
         setImportNotice({
           type: "error",
@@ -1081,6 +1346,42 @@ export default function Home() {
     downloadBlob(csv, "ResolveOS Template.csv");
   };
 
+  const exportHistoryCsv = () => {
+    const headers = ["Month", "Merchant", "Client", "Paid Date", "Amount"];
+    const rows = historyPayments.map((payment) => [
+      payment.month_key || monthKeyFromDate(payment.paid_date),
+      payment.merchant || "",
+      payment.client || "",
+      payment.paid_date || "",
+      payment.amount || "",
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((value) => {
+            const cell = value === undefined || value === null ? "" : String(value);
+            if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+              return `"${cell.replace(/"/g, '""')}"`;
+            }
+            return cell;
+          })
+          .join(",")
+      )
+      .join("\n");
+    downloadBlob(csv, "ResolveOS Payments History.csv");
+  };
+
+  const clearHistory = async () => {
+    if (!session?.user?.id) return;
+    if (!window.confirm("Delete all historical payments from storage?")) return;
+    const { error } = await supabase.from("payments_history").delete().eq("user_id", session.user.id);
+    if (error) {
+      window.alert(error.message);
+      return;
+    }
+    setHistoryPayments([]);
+  };
+
   const resetData = async () => {
     if (!window.confirm("Reset local data and clear imported accounts?")) return;
     if (!session?.user?.id) return;
@@ -1101,6 +1402,18 @@ export default function Home() {
   };
 
   const closePaymentModal = () => setShowPaymentModal(false);
+  const openQuickPaymentModal = () => {
+    if (!merchants.length) {
+      window.alert("Add an account before logging a payment.");
+      return;
+    }
+    const firstId = merchants[0]?.id || "";
+    setPaymentMerchantId(firstId);
+    setPaymentDate(todayKey());
+    setPaymentAmount("");
+    setShowQuickPaymentModal(true);
+  };
+  const closeQuickPaymentModal = () => setShowQuickPaymentModal(false);
   const closeControlsModal = () => setShowControls(false);
 
   const openStatusModal = () => {
@@ -1426,7 +1739,7 @@ export default function Home() {
       <div
         id="mainContent"
         className={`flex-1 min-w-0 px-6 py-6 md:px-10 ${
-          view === "accounts" ? "h-screen overflow-hidden" : ""
+          view === "accounts" ? "lg:h-screen lg:overflow-hidden" : ""
         }`}
       >
         <input
@@ -1487,13 +1800,24 @@ export default function Home() {
                     aria-hidden="true"
                     tabIndex={-1}
                   />
-                  <button
-                    id="addMerchant"
-                    className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
-                    onClick={() => openMerchantModal()}
-                  >
-                    Add Merchant
-                  </button>
+                  {view === "accounts" && (
+                    <button
+                      id="addMerchant"
+                      className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
+                      onClick={() => openMerchantModal()}
+                    >
+                      Add Merchant
+                    </button>
+                  )}
+                  {view === "payments" && (
+                    <button
+                      id="logPayment"
+                      className="rounded-full bg-ink px-5 py-2 text-sm font-semibold text-white shadow-glow transition hover:-translate-y-0.5"
+                      onClick={openQuickPaymentModal}
+                    >
+                      Log Payment
+                    </button>
+                  )}
                 </>
               )}
               {view === "opportunities" && (
@@ -1555,9 +1879,73 @@ export default function Home() {
           </section>
         )}
 
+        {view === "payments" && (
+          <section className="mt-4 space-y-3">
+            <div className="stat-strip glass rounded-3xl px-4 py-3 shadow-sm">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <p className="text-[11px] uppercase tracking-[0.25em] text-steel/60">Today</p>
+                  <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+                    {touchedCount} worked
+                  </span>
+                </div>
+                <div className="flex w-full flex-1 justify-center">
+                  <div className="relative w-full max-w-xl">
+                    <svg
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel/50"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    >
+                      <circle cx="11" cy="11" r="7"></circle>
+                      <path d="M21 21l-3.5-3.5"></path>
+                    </svg>
+                    <input
+                      type="search"
+                      placeholder="Search merchant or client..."
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      className="w-full rounded-full border border-steel/10 bg-white/80 py-2 pl-9 pr-4 text-sm text-ink shadow-sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="stat-chip min-w-[150px] rounded-2xl border border-steel/10 bg-white/70 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Payments Logged</p>
+                    <p className="text-base font-semibold">{formatMoney(paymentsToday)}</p>
+                  </div>
+                  <div className="stat-chip min-w-[150px] rounded-2xl border border-steel/10 bg-white/70 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-steel/60">Month Total</p>
+                    <p className="text-base font-semibold">{formatMoney(monthTotal)}</p>
+                  </div>
+                  <button
+                    className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white shadow-glow"
+                    onClick={openQuickPaymentModal}
+                  >
+                    Log Payment
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         <main className="mt-6">
           {view === "dashboard" && (
             <section id="dashboardView">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Monthly Performance</p>
+                  <h2 className="text-lg font-semibold">Current vs Historical</h2>
+                </div>
+                <button
+                  className="rounded-full border border-steel/10 bg-white px-4 py-2 text-xs font-semibold text-steel/70 shadow-sm"
+                  onClick={() => setShowHistory((prev) => !prev)}
+                >
+                  {showHistory ? "Hide History" : "Show History"}
+                </button>
+              </div>
               <div className="grid gap-4 lg:grid-cols-4">
                 <div className="glass rounded-3xl p-5 shadow-sm">
                   <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Expected Cash-In</p>
@@ -1580,6 +1968,80 @@ export default function Home() {
                   <p className="mt-1 text-xs text-steel/60">Payments logged</p>
                 </div>
               </div>
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Monthly Goal</p>
+                  <h2 className="mt-2 text-lg font-semibold">Auto +$10k Each Month</h2>
+                  <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-steel/70">
+                    <span className="rounded-full bg-ink/5 px-3 py-1 text-xs text-steel/70">
+                      Base: {formatMoney(parseMoney(monthlyGoalBase))}
+                    </span>
+                    <span className="rounded-full bg-ink/5 px-3 py-1 text-xs text-steel/70">
+                      Current goal: {formatMoney(currentGoal)}
+                    </span>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      Remaining: {formatMoney(Math.max(0, currentGoal - monthTotal))}
+                    </span>
+                  </div>
+                </div>
+                <div className="glass rounded-3xl p-6 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Goal Settings</p>
+                  <h2 className="mt-2 text-lg font-semibold">Set Base Month</h2>
+                  <div className="mt-4 grid gap-3">
+                    <label className="text-xs text-steel/60">
+                      Base goal
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={monthlyGoalBase}
+                        onChange={(event) => setMonthlyGoalBase(event.target.value)}
+                        onBlur={formatCurrencyInput}
+                        className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="text-xs text-steel/60">
+                      Base month
+                      <input
+                        type="month"
+                        value={monthlyGoalStartMonth}
+                        onChange={(event) => setMonthlyGoalStartMonth(event.target.value)}
+                        className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <button
+                      className="rounded-full bg-ink px-4 py-2 text-xs font-semibold text-white"
+                      onClick={saveMonthlySettings}
+                      disabled={isGoalSaving}
+                    >
+                      {isGoalSaving ? "Saving..." : "Save Goal"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {showHistory && (
+                <div className="mt-5 glass rounded-3xl p-6 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Historical Payments</p>
+                      <h2 className="mt-2 text-lg font-semibold">Prior Months Summary</h2>
+                    </div>
+                    <span className="rounded-full bg-ink/5 px-3 py-1 text-xs text-steel/70">
+                      {historyPayments.length} records
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {historyByMonth.length === 0 && (
+                      <p className="text-sm text-steel/60">No historical payments yet.</p>
+                    )}
+                    {historyByMonth.map((entry) => (
+                      <div key={entry.key} className="rounded-2xl border border-steel/10 bg-white/70 px-4 py-3">
+                        <p className="text-xs uppercase tracking-[0.2em] text-steel/60">{entry.key}</p>
+                        <p className="mt-2 text-xl font-semibold text-ink">{formatMoney(entry.total)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="glass rounded-3xl p-6 shadow-sm">
@@ -1740,7 +2202,7 @@ export default function Home() {
                 id="opportunityScrollTop"
                 ref={opportunityTopScrollRef}
                 onScroll={handleOpportunityTopScroll}
-                className="mt-4 overflow-x-auto pb-2"
+                className="mt-4 overflow-x-auto pb-2 opportunity-scroll-top"
               >
                 <div ref={opportunityTopScrollInnerRef} className="h-2 w-full"></div>
               </div>
@@ -1752,7 +2214,16 @@ export default function Home() {
               >
                 <div className="grid auto-cols-[280px] grid-flow-col gap-4">
                   {OPPORTUNITY_STAGES.map((stage) => (
-                    <div key={stage} className="glass rounded-3xl p-4 shadow-sm">
+                    <div
+                      key={stage}
+                      className="glass no-float rounded-3xl p-4 shadow-sm flex flex-col max-h-[calc(100vh-22rem)]"
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const id = event.dataTransfer.getData("text/plain");
+                        if (id) updateOpportunityStage(id, stage);
+                      }}
+                    >
                       <div className="flex items-center justify-between">
                         <div>
                           <h3 className="text-sm font-semibold">{stage}</h3>
@@ -1764,17 +2235,29 @@ export default function Home() {
                           {Math.round(getOpportunityConfidence(stage) * 100)}%
                         </span>
                       </div>
-                      <div className="mt-4 grid gap-3">
+                      <div className="mt-4 flex-1 overflow-y-auto pr-1">
+                        <div className="grid gap-3">
                         {opportunitiesByStage[stage].map((opportunity) => (
                           <div
                             key={opportunity.id}
                             className="group rounded-2xl border border-steel/10 bg-white/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                            draggable
+                            onDragStart={(event) => event.dataTransfer.setData("text/plain", opportunity.id)}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <h4 className="text-sm font-semibold">{opportunity.merchant}</h4>
-                                <p className="text-xs text-steel/60">{opportunity.client || "Client not listed"}</p>
-                              </div>
+                                <div>
+                                  <h4 className="text-sm font-semibold">{opportunity.merchant}</h4>
+                                  <p className="text-xs text-steel/60">{opportunity.client || "Client not listed"}</p>
+                                  {opportunity.tags && opportunity.tags.length > 0 && (
+                                    <div className="mt-2 flex flex-wrap gap-1">
+                                      {opportunity.tags.map((tag) => (
+                                        <span key={`${opportunity.id}-${tag}`} className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-semibold text-steel/70">
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               <span className="text-xs font-semibold text-ink">
                                 {formatMoney(parseMoney(opportunity.amount))}
                               </span>
@@ -1819,6 +2302,7 @@ export default function Home() {
                             No opportunities in this stage.
                           </div>
                         )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1862,10 +2346,10 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-steel/10">
-                      {filteredMerchants.map((merchant) => {
-                        const monthTotalRow = merchant.payments
-                          .filter((payment) => payment.date.startsWith(monthKey))
-                          .reduce((acc, payment) => acc + payment.amount, 0);
+                        {filteredMerchants.map((merchant) => {
+                          const monthTotalRow = merchant.payments
+                            .filter((payment) => payment.date.startsWith(monthKey))
+                            .reduce((acc, payment) => acc + payment.amount, 0);
                         const ageDays = getAccountAgeDays(merchant);
                         const priority = getPriorityLabel(ageDays);
                         const touchBadge = getTouchBadge(merchant);
@@ -1883,6 +2367,15 @@ export default function Home() {
                               >
                                 {merchant.merchant}
                               </button>
+                              {merchant.tags && merchant.tags.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {merchant.tags.map((tag) => (
+                                    <span key={`${merchant.id}-${tag}`} className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-semibold text-steel/70">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </td>
                             <td className="py-3 pr-4 text-steel/70">{merchant.client || "-"}</td>
                             <td className="py-3 pr-4 text-steel/70">{merchant.status}</td>
@@ -1954,21 +2447,69 @@ export default function Home() {
           )}
           {view === "payments" && (
             <section id="kanbanView">
-              <div className="mb-3 flex items-center justify-end">
-                <button
-                  className="rounded-full border border-steel/10 bg-white px-4 py-2 text-xs font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                  onClick={handleToggleUnsorted}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
-                      <circle cx="12" cy="12" r="3"></circle>
-                      {!showUnsortedKanban && <path d="M3 3l18 18"></path>}
-                    </svg>
-                    {showUnsortedKanban ? "Hide Unsorted" : "Show Unsorted"}
-                  </span>
-                </button>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    className="rounded-full border border-steel/10 bg-white px-4 py-2 text-xs font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    onClick={handleToggleUnsorted}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        {!showUnsortedKanban && <path d="M3 3l18 18"></path>}
+                      </svg>
+                      {showUnsortedKanban ? "Hide Unsorted" : "Show Unsorted"}
+                    </span>
+                  </button>
+                  <button
+                    className="rounded-full border border-steel/10 bg-white px-4 py-2 text-xs font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    onClick={() => setShowHistory((prev) => !prev)}
+                  >
+                    {showHistory ? "Hide History" : "Show History"}
+                  </button>
+                </div>
+                {showHistory && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      className="rounded-full border border-steel/10 bg-white px-3 py-2 text-xs font-semibold text-steel/70"
+                      onClick={exportHistoryCsv}
+                    >
+                      Export History CSV
+                    </button>
+                    <button
+                      className="rounded-full border border-coral/20 px-3 py-2 text-xs font-semibold text-coral"
+                      onClick={clearHistory}
+                    >
+                      Delete History
+                    </button>
+                  </div>
+                )}
               </div>
+              {showHistory && (
+                <div className="mb-6 grid gap-3 rounded-3xl border border-steel/10 bg-white/60 p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-steel/60">Historical Payments</p>
+                      <h3 className="text-lg font-semibold">Prior Months</h3>
+                    </div>
+                    <span className="rounded-full bg-ink/5 px-3 py-1 text-xs text-steel/70">
+                      {historyPayments.length} records
+                    </span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {historyByMonth.length === 0 && (
+                      <p className="text-sm text-steel/60">No historical payments yet.</p>
+                    )}
+                    {historyByMonth.map((entry) => (
+                      <div key={entry.key} className="rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm">
+                        <p className="text-xs uppercase tracking-[0.2em] text-steel/60">{entry.key}</p>
+                        <p className="mt-1 font-semibold text-ink">{formatMoney(entry.total)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="-mx-2 px-2 pb-2">
                 <div ref={topScrollRef} id="kanbanScrollTop" className="kanban-scroll-top overflow-x-auto" onScroll={handleTopScroll}>
                   <div ref={topScrollInnerRef} id="kanbanScrollTopInner" className="h-2 min-w-full"></div>
@@ -1988,7 +2529,7 @@ export default function Home() {
                     return (
                       <div
                         key={status}
-                        className="fade-in flex min-w-[320px] max-w-[320px] flex-1 flex-col rounded-3xl border border-white/60 bg-white/70 p-4 shadow-sm"
+                        className="fade-in flex min-w-[320px] max-w-[320px] flex-1 flex-col rounded-3xl border border-white/60 bg-white/70 p-4 shadow-sm max-h-[calc(100vh-22rem)]"
                         data-status={status}
                         onDragOver={(event) => event.preventDefault()}
                         onDrop={(event) => handleDrop(event, status)}
@@ -2002,7 +2543,8 @@ export default function Home() {
                             {statusMerchants.length}
                           </span>
                         </div>
-                        <div className="flex flex-col gap-3">
+                        <div className="flex-1 overflow-y-auto pr-1">
+                          <div className="flex flex-col gap-3">
                           {statusMerchants.map((merchant) => {
                             const ageDays = getAccountAgeDays(merchant);
                             const followUpStatus = getFollowUpStatus(merchant);
@@ -2027,6 +2569,15 @@ export default function Home() {
                                   </span>
                                 </div>
                                 <p className="mt-2 text-xs text-steel/70">{merchant.client || "Client not listed"}</p>
+                                {merchant.tags && merchant.tags.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    {merchant.tags.map((tag) => (
+                                      <span key={`${merchant.id}-${tag}`} className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-semibold text-steel/70">
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                                 <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-steel/70">
                                   <span className="rounded-full bg-ink/5 px-2 py-1">{merchant.amount || "No amount"}</span>
                                   <span className="rounded-full bg-ink/5 px-2 py-1">{merchant.frequency || "No frequency"}</span>
@@ -2088,6 +2639,7 @@ export default function Home() {
                               No accounts in this status.
                             </div>
                           )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -2184,6 +2736,17 @@ export default function Home() {
                     >
                       Import CSV
                     </button>
+                    <div className="flex items-center gap-2 rounded-full border border-steel/10 bg-white/80 px-3 py-2 text-sm text-steel/70">
+                      <span className="text-xs uppercase tracking-[0.2em] text-steel/60">Mode</span>
+                      <select
+                        className="bg-transparent text-sm font-semibold text-ink focus:outline-none"
+                        value={csvImportMode}
+                        onChange={(event) => setCsvImportMode(event.target.value)}
+                      >
+                        <option value="replace">Reset & Replace</option>
+                        <option value="append">Append Data</option>
+                      </select>
+                    </div>
                     <button
                       className="rounded-full border border-steel/10 bg-white px-4 py-2 text-sm font-medium shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                       onClick={handleExportCsv}
@@ -2301,6 +2864,17 @@ export default function Home() {
                           />
                           Unsorted only
                         </label>
+                        {TAG_OPTIONS.map((tag) => (
+                          <label key={`settings-tag-${tag}`} className="flex items-center gap-2 text-sm text-steel/70">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-ink"
+                              checked={tagFilters.includes(tag)}
+                              onChange={() => toggleTagFilter(tag)}
+                            />
+                            {tag}
+                          </label>
+                        ))}
                       </div>
                     </div>
                     <div className="space-y-4">
@@ -2419,23 +2993,47 @@ export default function Home() {
                   className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
                 />
               </label>
-              <label className="text-sm">
-                Collection Day
-                <select
-                  name="paymentStatus"
-                  defaultValue={editingOpportunity?.paymentStatus || "Unsorted"}
-                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
-                >
+                  <label className="text-sm">
+                    Collection Day
+                    <select
+                      name="paymentStatus"
+                      defaultValue={editingOpportunity?.paymentStatus || "Unsorted"}
+                      className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                    >
                   {statuses.map((status) => (
                     <option key={status} value={status}>
                       {status}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label className="text-sm md:col-span-2">
-                Notes
-                <textarea
+                    </select>
+                  </label>
+                  <div className="text-sm md:col-span-2">
+                    <p className="text-sm font-semibold">Tags</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {TAG_OPTIONS.map((tag) => {
+                        const active = opportunityTagsDraft.includes(tag);
+                        return (
+                          <button
+                            key={`opportunity-tag-${tag}`}
+                            type="button"
+                            className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                              active ? "border-ink bg-ink text-white" : "border-steel/10 bg-white/80 text-steel/70"
+                            }`}
+                            onClick={() =>
+                              setOpportunityTagsDraft((prev) =>
+                                prev.includes(tag) ? prev.filter((item) => item !== tag) : prev.concat(tag)
+                              )
+                            }
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <label className="text-sm md:col-span-2">
+                    Notes
+                    <textarea
                   name="notes"
                   rows="3"
                   defaultValue={editingOpportunity?.notes || ""}
@@ -2551,6 +3149,30 @@ export default function Home() {
                   className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
                 />
               </label>
+              <div className="text-sm md:col-span-2">
+                <p className="text-sm font-semibold">Tags</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {TAG_OPTIONS.map((tag) => {
+                    const active = merchantTagsDraft.includes(tag);
+                    return (
+                      <button
+                        key={`merchant-tag-${tag}`}
+                        type="button"
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          active ? "border-ink bg-ink text-white" : "border-steel/10 bg-white/80 text-steel/70"
+                        }`}
+                        onClick={() =>
+                          setMerchantTagsDraft((prev) =>
+                            prev.includes(tag) ? prev.filter((item) => item !== tag) : prev.concat(tag)
+                          )
+                        }
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <label className="text-sm">
                 Account Age Days
                 <input
@@ -2618,6 +3240,72 @@ export default function Home() {
                 <div className="md:col-span-2">
                   <details className="rounded-2xl border border-steel/10 bg-white/70 px-4 py-3">
                     <summary className="cursor-pointer text-sm font-semibold text-steel/80">
+                      Linked opportunities ({linkedOpportunities.length})
+                    </summary>
+                    <div className="mt-3 space-y-3 text-sm text-steel/70">
+                      {!showOpportunityLink && (
+                        <button
+                          type="button"
+                          className="rounded-full border border-steel/10 px-3 py-1 text-xs font-semibold text-steel/70"
+                          onClick={openLinkedOpportunities}
+                        >
+                          Load linked opportunities
+                        </button>
+                      )}
+                      {showOpportunityLink && linkedOpportunities.length === 0 && (
+                        <p>No opportunities linked yet.</p>
+                      )}
+                      {showOpportunityLink &&
+                        linkedOpportunities.map((opportunity) => (
+                          <div key={opportunity.id} className="rounded-2xl border border-steel/10 bg-white/80 px-3 py-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-ink">{opportunity.merchant}</p>
+                                <p className="text-xs text-steel/60">{opportunity.client || "Client not listed"}</p>
+                              </div>
+                              <span className="rounded-full bg-ink/5 px-2 py-1 text-xs text-steel/70">
+                                {opportunity.stage}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-steel/70">
+                              <span>{formatMoney(parseMoney(opportunity.amount))}</span>
+                              <span>{opportunity.frequency || "TBD"}</span>
+                            </div>
+                            {opportunity.tags && opportunity.tags.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {opportunity.tags.map((tag) => (
+                                  <span key={`${opportunity.id}-${tag}`} className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-semibold text-steel/70">
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="rounded-full border border-steel/10 px-3 py-1 text-xs font-semibold text-steel/70"
+                                onClick={() => openOpportunityModal(opportunity)}
+                              >
+                                Open
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-full border border-coral/20 px-3 py-1 text-xs font-semibold text-coral"
+                                onClick={() => deleteOpportunity(opportunity.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </details>
+                </div>
+              )}
+              {editingMerchant && (
+                <div className="md:col-span-2">
+                  <details className="rounded-2xl border border-steel/10 bg-white/70 px-4 py-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-steel/80">
                       Activity history
                     </summary>
                     <div className="mt-3 space-y-2 text-sm text-steel/70">
@@ -2642,6 +3330,13 @@ export default function Home() {
               <div className="md:col-span-2 flex justify-end gap-3">
                 {editingMerchant && (
                   <>
+                    <button
+                      type="button"
+                      className="rounded-2xl border border-ink/20 px-4 py-2 text-sm text-ink"
+                      onClick={() => openPaymentModal(editingMerchant)}
+                    >
+                      Log Payment
+                    </button>
                     <button
                       type="button"
                       className="rounded-2xl border border-sky/30 px-4 py-2 text-sm text-sky"
@@ -2714,8 +3409,79 @@ export default function Home() {
                 <button type="button" id="cancelPayment" className="rounded-2xl border border-steel/10 px-4 py-2 text-sm" onClick={closePaymentModal}>
                   Cancel
                 </button>
-                <button type="submit" className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white">
-                  Log Payment
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white"
+                  disabled={isPaymentSaving}
+                >
+                  {isPaymentSaving ? "Saving..." : "Log Payment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showQuickPaymentModal && (
+        <div id="quickPaymentModal" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="glass w-full max-w-lg rounded-3xl p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Log Payment</h2>
+              <button className="text-xl text-steel/60" onClick={closeQuickPaymentModal}>
+                &times;
+              </button>
+            </div>
+            <form className="mt-4 grid gap-4" onSubmit={addPayment}>
+              <label className="text-sm">
+                Account
+                <select
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2 text-sm"
+                  value={paymentMerchantId}
+                  onChange={(event) => setPaymentMerchantId(event.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Select an account
+                  </option>
+                  {merchants.map((merchant) => (
+                    <option key={merchant.id} value={merchant.id}>
+                      {merchant.merchant}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                Payment Date
+                <input
+                  type="date"
+                  required
+                  value={paymentDate}
+                  onChange={(event) => setPaymentDate(event.target.value)}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <label className="text-sm">
+                Amount
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  required
+                  value={paymentAmount}
+                  onChange={(event) => setPaymentAmount(event.target.value)}
+                  onBlur={formatPaymentInput}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                />
+              </label>
+              <div className="flex justify-end gap-3">
+                <button type="button" className="rounded-2xl border border-steel/10 px-4 py-2 text-sm" onClick={closeQuickPaymentModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white"
+                  disabled={isPaymentSaving || !paymentMerchantId}
+                >
+                  {isPaymentSaving ? "Saving..." : "Log Payment"}
                 </button>
               </div>
             </form>
@@ -2876,6 +3642,17 @@ export default function Home() {
                     />
                     Unsorted only
                   </label>
+                  {TAG_OPTIONS.map((tag) => (
+                    <label key={`tag-filter-${tag}`} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-ink"
+                        checked={tagFilters.includes(tag)}
+                        onChange={() => toggleTagFilter(tag)}
+                      />
+                      {tag}
+                    </label>
+                  ))}
                   <button
                     className="rounded-full border border-steel/10 bg-white/80 px-3 py-1 text-xs font-semibold text-steel/70"
                     onClick={openStatusModal}

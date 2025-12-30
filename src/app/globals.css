@@ -25,6 +25,7 @@
 
 body {
   font-family: var(--font-space-grotesk), ui-sans-serif, system-ui;
+  background: #e7efff;
 }
 
 .glass {
@@ -41,6 +42,15 @@ body {
 #mainContent .glass:hover {
   transform: translateY(-2px);
   box-shadow: 0 28px 70px -52px rgba(14, 17, 22, 0.38), 0 14px 30px -26px rgba(14, 17, 22, 0.24);
+}
+
+#mainContent .glass.no-float {
+  transition: none;
+}
+
+#mainContent .glass.no-float:hover {
+  transform: none;
+  box-shadow: 0 22px 60px -48px rgba(14, 17, 22, 0.28), 0 10px 24px -22px rgba(14, 17, 22, 0.18);
 }
 
 .stat-strip {
@@ -115,6 +125,20 @@ body.theme-dark .followup-card {
 }
 
 #kanbanScrollTop::-webkit-scrollbar-track {
+  background: rgba(15, 18, 24, 0.08);
+  border-radius: 999px;
+}
+
+#opportunityScrollTop {
+  scrollbar-width: thin;
+  scrollbar-color: #0e1116 rgba(15, 18, 24, 0.12);
+}
+
+#opportunityScrollTop::-webkit-scrollbar {
+  height: 8px;
+}
+
+#opportunityScrollTop::-webkit-scrollbar-track {
   background: rgba(15, 18, 24, 0.08);
   border-radius: 999px;
 }

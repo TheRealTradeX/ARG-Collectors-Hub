@@ -1,4 +1,3 @@
-const STORAGE_KEY = "arg_crm_kanban_v1";
 const SIDEBAR_KEY = "arg_crm_sidebar_collapsed";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -22,27 +21,7 @@ const OPPORTUNITY_STAGE_CONFIDENCE = {
   "Payment Plan Made": 1,
 };
 
-const STATUS_HEADERS = [
-  "SETTLED",
-  "Good Faith",
-  "Daily",
-  "MONDAYS",
-  "TUESDAYS",
-  "Wednesday",
-  "Thursday",
-  "Fridays",
-  "Bi-Weekly",
-  "Monthly",
-  "DEFAULTED ACCOUNTS",
-  "Forms out- Need Returned",
-  "FOLLOW UPS- OFFERS OUT/ IN",
-  "NEW ACCOUNTS DAILY FOLLOW UPS - first 14 days",
-  "FOLLOW UPS / BKY ACCOUNTS (15-60) (Mon & Thursday)",
-  "FOLLOW UPS / BKY ACCOUNTS (60-179) (Tues + Friday)",
-  "FOLLOW UPS / BKY ACCOUNTS (180 +) (Wed - Sat)",
-];
-
-const DEFAULT_STATUSES = Array.from(new Set(STATUS_HEADERS.concat(["Unsorted"])));
+const DEFAULT_STATUSES = ["Unsorted"];
 
 const HEADER_KEY_MAP = {
   merchant: "merchant",
@@ -717,29 +696,6 @@ const getPaymentsToday = (merchants) => {
 
 const getTouchedCount = (merchants) => merchants.filter((merchant) => merchant.lastTouched === todayKey()).length;
 
-const loadStoredState = () => {
-  if (typeof window === "undefined") return null;
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return null;
-  try {
-    return JSON.parse(saved);
-  } catch {
-    return null;
-  }
-};
-
-const persistState = (merchants, statuses, opportunities) => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      merchants,
-      statuses,
-      opportunities: opportunities || [],
-    })
-  );
-};
-
 const loadSidebarState = () => {
   if (typeof window === "undefined") return false;
   return localStorage.getItem(SIDEBAR_KEY) === "1";
@@ -751,7 +707,6 @@ const persistSidebarState = (collapsed) => {
 };
 
 export {
-  STORAGE_KEY,
   SIDEBAR_KEY,
   MS_PER_DAY,
   DEFAULT_STATUSES,
@@ -788,8 +743,6 @@ export {
   getMonthTotal,
   getPaymentsToday,
   getTouchedCount,
-  loadStoredState,
-  persistState,
   loadSidebarState,
   persistSidebarState,
   toDateKey,
