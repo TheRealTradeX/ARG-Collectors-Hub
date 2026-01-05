@@ -585,3 +585,17 @@ body.theme-dark button.rounded-full:hover {
 #opportunityScrollBottom {
   scrollbar-width: none;
 }
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.sort-indicator {
+  opacity: 0.5;
+  line-height: 1;
+  transition: opacity 150ms ease;
+}
+
+.sort-button:hover .sort-indicator {
+  opacity: 0.9;
+}

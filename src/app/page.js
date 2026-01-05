@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DEFAULT_STATUSES,
   OPPORTUNITY_STAGES,
@@ -72,24 +73,52 @@ const monthKeyFromDate = (dateValue) => {
   return `${year}-${month}`;
 };
 
-export default function Home() {
+const appCache = {
+  userId: null,
+  merchants: [],
+  statuses: null,
+  opportunities: [],
+  history: [],
+  historyPayments: [],
+  monthlySettings: null,
+  filtersByView: null,
+  monthKey: null,
+};
+
+const DEFAULT_FILTERS = {
+  search: "",
+  tagFilters: [],
+  touchedOnly: false,
+  needWorkOnly: false,
+  dueWeekOnly: false,
+  increaseOnly: false,
+  unsortedOnly: false,
+  priorityFilters: { p0: false, p1: false, p2: false, p3: false },
+  sortKey: "",
+  sortDirection: "asc",
+};
+
+export default function Home({ initialView = "accounts" }) {
   const TAG_OPTIONS = ["Bankruptcy", "Answer Filed"];
-  const [merchants, setMerchants] = useState([]);
-  const [statuses, setStatuses] = useState(DEFAULT_STATUSES.slice());
-  const [opportunities, setOpportunities] = useState([]);
-  const [view, setView] = useState("accounts");
-  const [search, setSearch] = useState("");
-  const [tagFilters, setTagFilters] = useState([]);
-  const [touchedOnly, setTouchedOnly] = useState(false);
-  const [needWorkOnly, setNeedWorkOnly] = useState(false);
-  const [dueWeekOnly, setDueWeekOnly] = useState(false);
-  const [increaseOnly, setIncreaseOnly] = useState(false);
-  const [unsortedOnly, setUnsortedOnly] = useState(false);
-  const [priorityFilters, setPriorityFilters] = useState({ p0: false, p1: false, p2: false, p3: false });
-  const [monthKey, setMonthKey] = useState(currentMonthKey());
+  const router = useRouter();
+  const [merchants, setMerchants] = useState(appCache.merchants || []);
+  const [statuses, setStatuses] = useState(appCache.statuses || DEFAULT_STATUSES.slice());
+  const [opportunities, setOpportunities] = useState(appCache.opportunities || []);
+  const [view, setView] = useState(initialView);
+  const [filtersByView, setFiltersByView] = useState(
+    () =>
+      appCache.filtersByView || {
+        accounts: { ...DEFAULT_FILTERS },
+        payments: { ...DEFAULT_FILTERS },
+        opportunities: { ...DEFAULT_FILTERS },
+        dashboard: { ...DEFAULT_FILTERS },
+        settings: { ...DEFAULT_FILTERS },
+      }
+  );
+  const [monthKey, setMonthKey] = useState(appCache.monthKey || currentMonthKey());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState("light");
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(appCache.session || null);
   const [authMode, setAuthMode] = useState("signin");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
@@ -97,7 +126,7 @@ export default function Home() {
   const [authPhone, setAuthPhone] = useState("");
   const [authError, setAuthError] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
-  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [isDataLoading, setIsDataLoading] = useState(!appCache.merchants?.length);
   const [profileName, setProfileName] = useState("");
   const [profilePhone, setProfilePhone] = useState("");
   const [showProfileEditor, setShowProfileEditor] = useState(false);
@@ -119,6 +148,8 @@ export default function Home() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [isPaymentSaving, setIsPaymentSaving] = useState(false);
   const [showQuickPaymentModal, setShowQuickPaymentModal] = useState(false);
+  const [isMerchantSaving, setIsMerchantSaving] = useState(false);
+  const [isOpportunitySaving, setIsOpportunitySaving] = useState(false);
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusEdits, setStatusEdits] = useState({});
@@ -127,12 +158,14 @@ export default function Home() {
   const [draggedStatus, setDraggedStatus] = useState("");
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [showUnsortedKanban, setShowUnsortedKanban] = useState(true);
-  const [recentHistory, setRecentHistory] = useState([]);
-  const [historyPayments, setHistoryPayments] = useState([]);
+  const [recentHistory, setRecentHistory] = useState(appCache.history || []);
+  const [historyPayments, setHistoryPayments] = useState(appCache.historyPayments || []);
   const [showHistory, setShowHistory] = useState(false);
-  const [monthlyGoalBase, setMonthlyGoalBase] = useState("");
-  const [monthlyGoalStartMonth, setMonthlyGoalStartMonth] = useState(currentMonthKey());
-  const [lastResetMonth, setLastResetMonth] = useState("");
+  const [monthlyGoalBase, setMonthlyGoalBase] = useState(appCache.monthlySettings?.baseGoal || "");
+  const [monthlyGoalStartMonth, setMonthlyGoalStartMonth] = useState(
+    appCache.monthlySettings?.baseGoalMonth || currentMonthKey()
+  );
+  const [lastResetMonth, setLastResetMonth] = useState(appCache.monthlySettings?.lastResetMonth || "");
   const [isGoalSaving, setIsGoalSaving] = useState(false);
   const [csvImportMode, setCsvImportMode] = useState("replace");
   const [ageTick, setAgeTick] = useState(0);
@@ -149,7 +182,35 @@ export default function Home() {
   const isResettingRef = useRef(false);
   const fileInputRef = useRef(null);
   const opportunitiesRef = useRef([]);
-  const lastViewLogRef = useRef({});
+
+  const currentFilters = filtersByView[view] || filtersByView.accounts || DEFAULT_FILTERS;
+  const { search, tagFilters, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, unsortedOnly, priorityFilters, sortKey, sortDirection } =
+    currentFilters;
+
+  const updateCurrentFilters = useCallback(
+    (updates) => {
+      setFiltersByView((prev) => {
+        const current = prev[view] || DEFAULT_FILTERS;
+        const next = typeof updates === "function" ? updates(current) : { ...current, ...updates };
+        return { ...prev, [view]: next };
+      });
+    },
+    [view]
+  );
+
+  useEffect(() => {
+    if (initialView && view !== initialView) {
+      setView(initialView);
+    }
+  }, [initialView, view]);
+
+  useEffect(() => {
+    appCache.filtersByView = filtersByView;
+  }, [filtersByView]);
+
+  useEffect(() => {
+    appCache.monthKey = monthKey;
+  }, [monthKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -158,14 +219,17 @@ export default function Home() {
       if (error && String(error.message || "").toLowerCase().includes("refresh token")) {
         supabase.auth.signOut();
         setSession(null);
+        appCache.session = null;
         setIsDataLoading(false);
         return;
       }
       setSession(data.session);
+      appCache.session = data.session;
       setIsDataLoading(false);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      appCache.session = nextSession;
     });
     return () => {
       isMounted = false;
@@ -247,9 +311,9 @@ export default function Home() {
     return [];
   }, []);
 
-  const loadSupabaseData = useCallback(async () => {
+  const loadSupabaseData = useCallback(async ({ silent } = {}) => {
     if (!session?.user?.id) return;
-    setIsDataLoading(true);
+    if (!silent) setIsDataLoading(true);
     const userId = session.user.id;
     const [accountsResult, opportunitiesResult, paymentsResult, historyResult, statusesResult, settingsResult, historyPaymentsResult] = await Promise.all([
       supabase.from("accounts").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
@@ -315,6 +379,7 @@ export default function Home() {
 
     const loadedOpportunities = (opportunitiesResult.data || []).map((row) => ({
       id: row.id,
+      accountId: row.account_id || "",
       merchant: row.merchant || "",
       client: row.client || "",
       amount: row.amount || "",
@@ -347,6 +412,20 @@ export default function Home() {
     setOpportunities(loadedOpportunities);
     setRecentHistory(historyResult.data || []);
     setIsDataLoading(false);
+
+    appCache.userId = userId;
+    appCache.merchants = loadedMerchants;
+    appCache.statuses = loadedStatuses;
+    appCache.opportunities = loadedOpportunities;
+    appCache.history = historyResult.data || [];
+    appCache.historyPayments = historyPaymentsResult?.data || [];
+    appCache.monthlySettings = settings
+      ? {
+          baseGoal: settings.base_goal ? String(settings.base_goal) : "",
+          baseGoalMonth: settings.base_goal_month || currentMonthKey(),
+          lastResetMonth: settings.last_reset_month || "",
+        }
+      : null;
   }, [session?.user?.id, normalizeTags]);
 
   useEffect(() => {
@@ -354,9 +433,34 @@ export default function Home() {
       setMerchants([]);
       setStatuses(ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
       setOpportunities([]);
+      setRecentHistory([]);
+      setHistoryPayments([]);
+      setIsDataLoading(false);
+      appCache.userId = null;
+      appCache.merchants = [];
+      appCache.statuses = null;
+      appCache.opportunities = [];
+      appCache.history = [];
+      appCache.historyPayments = [];
+      appCache.monthlySettings = null;
       return;
     }
-    loadSupabaseData();
+
+    const canUseCache = appCache.userId === session.user.id && appCache.merchants?.length;
+    if (canUseCache) {
+      setMerchants(appCache.merchants);
+      setStatuses(appCache.statuses || ensureUnsortedStatus(DEFAULT_STATUSES.slice()));
+      setOpportunities(appCache.opportunities || []);
+      setRecentHistory(appCache.history || []);
+      setHistoryPayments(appCache.historyPayments || []);
+      if (appCache.monthlySettings) {
+        setMonthlyGoalBase(appCache.monthlySettings.baseGoal || "");
+        setMonthlyGoalStartMonth(appCache.monthlySettings.baseGoalMonth || currentMonthKey());
+        setLastResetMonth(appCache.monthlySettings.lastResetMonth || "");
+      }
+      setIsDataLoading(false);
+    }
+    loadSupabaseData({ silent: canUseCache });
   }, [session?.user?.id, loadSupabaseData]);
 
 
@@ -488,7 +592,7 @@ export default function Home() {
   }, [view]);
 
   const filteredMerchants = useMemo(() => {
-    return merchants
+    const filtered = merchants
       .filter((merchant) => {
         if (!search) return true;
         const term = search.toLowerCase();
@@ -510,7 +614,54 @@ export default function Home() {
         return priorityFilters[bucket];
       })
       .sort((a, b) => (a.status || "").localeCompare(b.status || "") || a.merchant.localeCompare(b.merchant));
-  }, [merchants, search, tagFilters, touchedOnly, needWorkOnly, dueWeekOnly, increaseOnly, unsortedOnly, priorityFilters, ageTick]);
+
+    if (!sortKey) return filtered;
+    const direction = sortDirection === "desc" ? -1 : 1;
+    const priorityOrder = { p0: 0, p1: 1, p2: 2, p3: 3 };
+    const getSortValue = (merchant) => {
+      if (sortKey === "age") return getAccountAgeDays(merchant);
+      if (sortKey === "priority") return priorityOrder[getPriorityBucket(getAccountAgeDays(merchant))] ?? 0;
+      if (sortKey === "lastWorked") {
+        const base = merchant.lastTouched || merchant.addedDate || "";
+        const time = new Date(base).getTime();
+        return Number.isNaN(time) ? null : time;
+      }
+      if (sortKey === "followUp") {
+        const next = getNextFollowUpDate(merchant);
+        if (!next) return null;
+        const time = new Date(next).getTime();
+        return Number.isNaN(time) ? null : time;
+      }
+      if (sortKey === "increase") {
+        const time = new Date(merchant.increaseDate || "").getTime();
+        return Number.isNaN(time) ? null : time;
+      }
+      return null;
+    };
+
+    return [...filtered].sort((a, b) => {
+      const aValue = getSortValue(a);
+      const bValue = getSortValue(b);
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return 1;
+      if (bValue == null) return -1;
+      if (aValue === bValue) return 0;
+      return aValue > bValue ? direction : -direction;
+    });
+  }, [
+    merchants,
+    search,
+    tagFilters,
+    touchedOnly,
+    needWorkOnly,
+    dueWeekOnly,
+    increaseOnly,
+    unsortedOnly,
+    priorityFilters,
+    sortKey,
+    sortDirection,
+    ageTick,
+  ]);
 
   const monthTotal = useMemo(() => getMonthTotal(merchants, monthKey), [merchants, monthKey]);
   const paymentsToday = useMemo(() => getPaymentsToday(merchants), [merchants]);
@@ -568,8 +719,27 @@ export default function Home() {
 
   const handleToggleSidebar = () => setSidebarCollapsed((prev) => !prev);
   const handleToggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  const getSortIndicator = (key) => {
+    if (sortKey !== key) return "";
+    return sortDirection === "asc" ? "▲" : "▼";
+  };
+  const handleSort = (key) =>
+    updateCurrentFilters((current) => {
+      if (current.sortKey !== key) {
+        return { ...current, sortKey: key, sortDirection: "asc" };
+      }
+      if (current.sortDirection === "asc") {
+        return { ...current, sortDirection: "desc" };
+      }
+      return { ...current, sortKey: "", sortDirection: "asc" };
+    });
   const toggleTagFilter = (tag) =>
-    setTagFilters((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : prev.concat(tag)));
+    updateCurrentFilters((current) => ({
+      ...current,
+      tagFilters: current.tagFilters.includes(tag)
+        ? current.tagFilters.filter((item) => item !== tag)
+        : current.tagFilters.concat(tag),
+    }));
   const saveMonthlySettings = async () => {
     if (!session?.user?.id) return;
     const baseGoal = parseMoney(monthlyGoalBase);
@@ -682,6 +852,7 @@ export default function Home() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
+    appCache.session = null;
   };
 
   const handleToggleUnsorted = async () => {
@@ -695,7 +866,7 @@ export default function Home() {
   };
 
   const handleOpenUserSettings = () => {
-    setView("settings");
+    router.push("/settings");
     setShowUserSettings(true);
   };
 
@@ -733,24 +904,30 @@ export default function Home() {
   };
   const applyQuickFilter = (type) => {
     if (type === "overdue") {
-      setNeedWorkOnly(true);
-      setDueWeekOnly(false);
-      setIncreaseOnly(false);
-      setTouchedOnly(false);
+      updateCurrentFilters({
+        needWorkOnly: true,
+        dueWeekOnly: false,
+        increaseOnly: false,
+        touchedOnly: false,
+      });
       return;
     }
     if (type === "dueWeek") {
-      setNeedWorkOnly(false);
-      setDueWeekOnly(true);
-      setIncreaseOnly(false);
-      setTouchedOnly(false);
+      updateCurrentFilters({
+        needWorkOnly: false,
+        dueWeekOnly: true,
+        increaseOnly: false,
+        touchedOnly: false,
+      });
       return;
     }
     if (type === "increase") {
-      setNeedWorkOnly(false);
-      setDueWeekOnly(false);
-      setIncreaseOnly(true);
-      setTouchedOnly(false);
+      updateCurrentFilters({
+        needWorkOnly: false,
+        dueWeekOnly: false,
+        increaseOnly: true,
+        touchedOnly: false,
+      });
     }
   };
 
@@ -774,9 +951,6 @@ export default function Home() {
     setLinkedOpportunities([]);
     setShowOpportunityLink(false);
     setShowMerchantModal(true);
-    if (merchant?.id) {
-      await logAccountView(merchant.id, merchant.merchant);
-    }
   };
 
   const closeMerchantModal = () => {
@@ -797,6 +971,8 @@ export default function Home() {
 
   const upsertOpportunity = async (event) => {
     event.preventDefault();
+    if (isOpportunitySaving) return;
+    setIsOpportunitySaving(true);
     const form = event.target;
     const formData = new FormData(form);
     const payload = {
@@ -814,10 +990,14 @@ export default function Home() {
       tags: opportunityTagsDraft,
     };
 
-    if (!payload.merchant || !session?.user?.id) return;
+    if (!payload.merchant || !session?.user?.id) {
+      setIsOpportunitySaving(false);
+      return;
+    }
 
     const record = {
       user_id: session.user.id,
+      account_id: editingOpportunity?.accountId || null,
       merchant: payload.merchant,
       client: payload.client,
       amount: payload.amount,
@@ -831,14 +1011,42 @@ export default function Home() {
       tags: payload.tags,
     };
 
-    if (payload.id) {
-      await supabase.from("opportunities").update(record).eq("id", payload.id).eq("user_id", session.user.id);
-    } else {
-      await supabase.from("opportunities").insert([record]);
-    }
+    try {
+      let linkedAccountId = record.account_id || "";
+      if (!linkedAccountId) {
+        const match = merchants.find(
+          (merchant) =>
+            merchant.merchant.trim().toLowerCase() === payload.merchant.trim().toLowerCase() &&
+            String(merchant.client || "").trim().toLowerCase() === payload.client.trim().toLowerCase()
+        );
+        if (match?.id) {
+          linkedAccountId = match.id;
+          record.account_id = linkedAccountId;
+        }
+      }
 
-    await loadSupabaseData();
-    closeOpportunityModal();
+      if (payload.id) {
+        await supabase.from("opportunities").update(record).eq("id", payload.id).eq("user_id", session.user.id);
+      } else {
+        const { data } = await supabase.from("opportunities").insert([record]).select("id").single();
+        if (data?.id) payload.id = data.id;
+      }
+
+      if (linkedAccountId && record.account_id) {
+        if (payload.id) {
+          await supabase
+            .from("opportunities")
+            .update({ account_id: linkedAccountId })
+            .eq("id", payload.id)
+            .eq("user_id", session.user.id);
+        }
+        await touchAccount(linkedAccountId, "worked", `Updated opportunity ${payload.merchant}`);
+      }
+      await loadSupabaseData();
+      closeOpportunityModal();
+    } finally {
+      setIsOpportunitySaving(false);
+    }
   };
 
   const deleteOpportunity = async (opportunityId) => {
@@ -885,14 +1093,6 @@ export default function Home() {
     });
   };
 
-  const logAccountView = async (accountId, merchantName) => {
-    const now = Date.now();
-    const last = lastViewLogRef.current[accountId] || 0;
-    if (now - last < 30 * 60 * 1000) return;
-    lastViewLogRef.current[accountId] = now;
-    await touchAccount(accountId, "viewed", `Viewed ${merchantName}`);
-  };
-
   const hasPaymentPlanCriteria = (opportunity) => {
     return Boolean(
       String(opportunity.amount || "").trim() &&
@@ -937,6 +1137,22 @@ export default function Home() {
   const updateOpportunityStage = async (opportunityId, stage) => {
     const opportunity = opportunities.find((item) => item.id === opportunityId);
     if (!opportunity || !session?.user?.id) return;
+    let linkedAccountId = opportunity.accountId || "";
+    if (!linkedAccountId) {
+      const match = merchants.find(
+        (merchant) =>
+          merchant.merchant.trim().toLowerCase() === String(opportunity.merchant || "").trim().toLowerCase() &&
+          String(merchant.client || "").trim().toLowerCase() === String(opportunity.client || "").trim().toLowerCase()
+      );
+      if (match?.id) {
+        linkedAccountId = match.id;
+        await supabase
+          .from("opportunities")
+          .update({ account_id: linkedAccountId })
+          .eq("id", opportunityId)
+          .eq("user_id", session.user.id);
+      }
+    }
 
     if (stage === "Payment Plan Made" && !hasPaymentPlanCriteria(opportunity)) {
       window.alert("Payment Plan Made requires amount, frequency, start date, and status.");
@@ -970,6 +1186,10 @@ export default function Home() {
       })
       .eq("id", opportunityId)
       .eq("user_id", session.user.id);
+
+    if (linkedAccountId) {
+      await touchAccount(linkedAccountId, "worked", `Worked from opportunity stage move: ${stage}`);
+    }
 
     await logHistory({
       entityType: "opportunity",
@@ -1030,6 +1250,8 @@ export default function Home() {
 
   const upsertMerchant = async (event) => {
     event.preventDefault();
+    if (isMerchantSaving) return;
+    setIsMerchantSaving(true);
     const form = event.target;
     const formData = new FormData(form);
     const ageInput = String(formData.get("accountAgeDays") || "").trim();
@@ -1055,7 +1277,10 @@ export default function Home() {
       tags: merchantTagsDraft,
     };
 
-    if (!payload.merchant || !session?.user?.id) return;
+    if (!payload.merchant || !session?.user?.id) {
+      setIsMerchantSaving(false);
+      return;
+    }
 
     const record = {
       user_id: session.user.id,
@@ -1073,18 +1298,21 @@ export default function Home() {
       tags: payload.tags,
     };
 
-    if (payload.id) {
-      await supabase.from("accounts").update(record).eq("id", payload.id).eq("user_id", session.user.id);
-      await touchAccount(payload.id, "updated", `Updated ${payload.merchant}`);
-    } else {
-      const { data } = await supabase.from("accounts").insert([record]).select("id").single();
-      if (data?.id) {
-        await touchAccount(data.id, "created", `Created ${payload.merchant}`);
+    try {
+      if (payload.id) {
+        await supabase.from("accounts").update(record).eq("id", payload.id).eq("user_id", session.user.id);
+        await touchAccount(payload.id, "updated", `Updated ${payload.merchant}`);
+      } else {
+        const { data } = await supabase.from("accounts").insert([record]).select("id").single();
+        if (data?.id) {
+          await touchAccount(data.id, "created", `Created ${payload.merchant}`);
+        }
       }
+      await loadSupabaseData();
+      closeMerchantModal();
+    } finally {
+      setIsMerchantSaving(false);
     }
-
-    await loadSupabaseData();
-    closeMerchantModal();
   };
 
   const deleteMerchant = async (merchantId) => {
@@ -1147,6 +1375,7 @@ export default function Home() {
     }
     const mapped = (data || []).map((row) => ({
       id: row.id,
+      accountId: row.account_id || "",
       merchant: row.merchant || "",
       client: row.client || "",
       amount: row.amount || "",
@@ -1218,6 +1447,32 @@ export default function Home() {
       action: "worked",
       details: "Marked worked",
     });
+    await loadSupabaseData();
+  };
+
+  const markOpportunityWorked = async (opportunity) => {
+    if (!session?.user?.id || !opportunity) return;
+    let accountId = opportunity.accountId || "";
+    if (!accountId) {
+      const match = merchants.find(
+        (merchant) =>
+          merchant.merchant.trim().toLowerCase() === String(opportunity.merchant || "").trim().toLowerCase() &&
+          String(merchant.client || "").trim().toLowerCase() === String(opportunity.client || "").trim().toLowerCase()
+      );
+      if (match?.id) {
+        accountId = match.id;
+        await supabase
+          .from("opportunities")
+          .update({ account_id: accountId })
+          .eq("id", opportunity.id)
+          .eq("user_id", session.user.id);
+      }
+    }
+    if (!accountId) {
+      window.alert("This opportunity is not linked to an account yet.");
+      return;
+    }
+    await touchAccount(accountId, "worked", `Worked from opportunity ${opportunity.merchant}`);
     await loadSupabaseData();
   };
 
@@ -1631,6 +1886,7 @@ export default function Home() {
             {
               key: "accounts",
               label: "Accounts",
+              path: "/accounts",
               icon: (
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <rect x="3" y="4" width="18" height="16" rx="3"></rect>
@@ -1641,6 +1897,7 @@ export default function Home() {
             {
               key: "opportunities",
               label: "Opportunities",
+              path: "/opportunities",
               icon: (
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <path d="M12 3v18"></path>
@@ -1652,6 +1909,7 @@ export default function Home() {
             {
               key: "payments",
               label: "Payments",
+              path: "/payments",
               icon: (
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <path d="M12 4v16"></path>
@@ -1662,6 +1920,7 @@ export default function Home() {
             {
               key: "dashboard",
               label: "Dashboard",
+              path: "/dashboard",
               icon: (
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <path d="M4 12a8 8 0 1 0 16 0"></path>
@@ -1673,6 +1932,7 @@ export default function Home() {
             {
               key: "settings",
               label: "Settings",
+              path: "/settings",
               icon: (
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"></path>
@@ -1687,7 +1947,7 @@ export default function Home() {
                 view === item.key ? "bg-ink text-white shadow-glow" : "text-steel/70 hover:bg-white/60"
               }`}
               data-view={item.key}
-              onClick={() => setView(item.key)}
+              onClick={() => router.push(item.path)}
             >
               <span className="flex items-center gap-3">
                 <span className="nav-icon text-current">{item.icon}</span>
@@ -1859,7 +2119,7 @@ export default function Home() {
                       type="search"
                       placeholder="Search merchant or client..."
                       value={search}
-                      onChange={(event) => setSearch(event.target.value)}
+                      onChange={(event) => updateCurrentFilters({ search: event.target.value })}
                       className="w-full rounded-full border border-steel/10 bg-white/80 py-2 pl-9 pr-4 text-sm text-ink shadow-sm"
                     />
                   </div>
@@ -1905,7 +2165,7 @@ export default function Home() {
                       type="search"
                       placeholder="Search merchant or client..."
                       value={search}
-                      onChange={(event) => setSearch(event.target.value)}
+                      onChange={(event) => updateCurrentFilters({ search: event.target.value })}
                       className="w-full rounded-full border border-steel/10 bg-white/80 py-2 pl-9 pr-4 text-sm text-ink shadow-sm"
                     />
                   </div>
@@ -2237,12 +2497,22 @@ export default function Home() {
                       </div>
                       <div className="mt-4 flex-1 overflow-y-auto pr-1">
                         <div className="grid gap-3">
-                        {opportunitiesByStage[stage].map((opportunity) => (
+                        {opportunitiesByStage[stage].map((opportunity) => {
+                          const linkedAccount = opportunity.accountId
+                            ? merchants.find((item) => item.id === opportunity.accountId)
+                            : merchants.find(
+                                (merchant) =>
+                                  merchant.merchant.trim().toLowerCase() === String(opportunity.merchant || "").trim().toLowerCase() &&
+                                  String(merchant.client || "").trim().toLowerCase() === String(opportunity.client || "").trim().toLowerCase()
+                              );
+                          const workedBadge = linkedAccount ? getTouchBadge(linkedAccount) : null;
+                          return (
                           <div
                             key={opportunity.id}
-                            className="group rounded-2xl border border-steel/10 bg-white/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                            className="group cursor-pointer rounded-2xl border border-steel/10 bg-white/80 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                             draggable
                             onDragStart={(event) => event.dataTransfer.setData("text/plain", opportunity.id)}
+                            onClick={() => openOpportunityModal(opportunity)}
                           >
                             <div className="flex items-start justify-between gap-2">
                                 <div>
@@ -2258,45 +2528,49 @@ export default function Home() {
                                     </div>
                                   )}
                                 </div>
-                              <span className="text-xs font-semibold text-ink">
-                                {formatMoney(parseMoney(opportunity.amount))}
-                              </span>
+                              <div className="flex flex-col items-end gap-2">
+                                <span className="text-xs font-semibold text-ink">
+                                  {formatMoney(parseMoney(opportunity.amount))}
+                                </span>
+                                {workedBadge && (
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${workedBadge.className}`}>
+                                    {workedBadge.label}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div className="mt-2 text-xs text-steel/70">
                               <p>Close: {displayDateValue(opportunity.expectedCloseDate)}</p>
                               <p>Plan: {opportunity.frequency || "TBD"}</p>
                             </div>
-                            <div className="mt-3 flex items-center justify-between gap-2 text-xs text-steel/70">
-                              <select
-                                className="rounded-full border border-steel/10 bg-white px-2 py-1 text-xs font-semibold text-steel/70"
-                                value={opportunity.stage}
-                                onChange={(event) => updateOpportunityStage(opportunity.id, event.target.value)}
+                            <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                              <button
+                                className="rounded-full border border-steel/10 px-3 py-1 text-xs font-semibold text-steel/70 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  markOpportunityWorked(opportunity);
+                                }}
+                                disabled={!linkedAccount}
                               >
-                                {OPPORTUNITY_STAGES.map((stageOption) => (
-                                  <option key={stageOption} value={stageOption}>
-                                    {stageOption}
-                                  </option>
-                                ))}
-                              </select>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  className="rounded-full border border-steel/10 px-2 py-1 text-xs font-semibold"
-                                  onClick={() => openOpportunityModal(opportunity)}
-                                >
-                                  Edit
-                                </button>
-                                {opportunity.stage === "Payment Plan Made" && (
-                                  <button
-                                    className="rounded-full bg-ink px-2 py-1 text-xs font-semibold text-white"
-                                    onClick={() => convertOpportunityToAccount(opportunity)}
-                                  >
-                                    Convert
-                                  </button>
-                                )}
-                              </div>
+                                Worked
+                              </button>
                             </div>
+                            {opportunity.stage === "Payment Plan Made" && (
+                              <div className="mt-3 flex items-center justify-end gap-2 text-xs text-steel/70">
+                                <button
+                                  className="rounded-full bg-ink px-2 py-1 text-xs font-semibold text-white"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    convertOpportunityToAccount(opportunity);
+                                  }}
+                                >
+                                  Convert
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        ))}
+                        );
+                        })}
                         {opportunitiesByStage[stage].length === 0 && (
                           <div className="rounded-2xl border border-dashed border-steel/20 bg-white/60 px-3 py-4 text-center text-xs text-steel/60">
                             No opportunities in this stage.
@@ -2335,12 +2609,32 @@ export default function Home() {
                         <th className="py-3 pr-4">Start</th>
                         <th className="py-3 pr-4">Amount</th>
                         <th className="py-3 pr-4">Frequency</th>
-                        <th className="py-3 pr-4">Age</th>
-                        <th className="py-3 pr-4">Priority</th>
-                        <th className="py-3 pr-4 text-center">Last Worked</th>
-                        <th className="py-3 pr-4 text-center">Follow-up</th>
+                        <th className="py-3 pr-4">
+                          <button type="button" className="sort-button flex items-center gap-1" onClick={() => handleSort("age")}>
+                            Age <span className="sort-indicator text-[10px]">{getSortIndicator("age")}</span>
+                          </button>
+                        </th>
+                        <th className="py-3 pr-4">
+                          <button type="button" className="sort-button flex items-center gap-1" onClick={() => handleSort("priority")}>
+                            Priority <span className="sort-indicator text-[10px]">{getSortIndicator("priority")}</span>
+                          </button>
+                        </th>
+                        <th className="py-3 pr-4 text-center">
+                          <button type="button" className="sort-button mx-auto flex items-center gap-1" onClick={() => handleSort("lastWorked")}>
+                            Last Worked <span className="sort-indicator text-[10px]">{getSortIndicator("lastWorked")}</span>
+                          </button>
+                        </th>
+                        <th className="py-3 pr-4 text-center">
+                          <button type="button" className="sort-button mx-auto flex items-center gap-1" onClick={() => handleSort("followUp")}>
+                            Follow-up <span className="sort-indicator text-[10px]">{getSortIndicator("followUp")}</span>
+                          </button>
+                        </th>
                         <th className="py-3 pr-4">Next Payment</th>
-                        <th className="py-3 pr-4">Increase</th>
+                        <th className="py-3 pr-4">
+                          <button type="button" className="sort-button flex items-center gap-1" onClick={() => handleSort("increase")}>
+                            Increase <span className="sort-indicator text-[10px]">{getSortIndicator("increase")}</span>
+                          </button>
+                        </th>
                         <th className="py-3 pr-4">Month Total</th>
                         <th className="py-3">Actions</th>
                       </tr>
@@ -2384,10 +2678,15 @@ export default function Home() {
                             <td className="py-3 pr-4 text-steel/70">{merchant.frequency || "-"}</td>
                             <td className="py-3 pr-4 text-steel/70">{ageDays}</td>
                             <td className="py-3 pr-4 text-steel/70">{priority}</td>
-                              <td className="py-3 pr-4 text-center">
-                                <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${touchBadge.className}`}>
-                                  {touchBadge.label}
-                                </span>
+                              <td className="py-3 pr-4 text-center align-middle">
+                                <div className="relative flex items-center justify-center">
+                                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-semibold leading-none text-steel/60">
+                                    {displayDateValue(merchant.lastTouched)}
+                                  </span>
+                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold whitespace-nowrap ${touchBadge.className}`}>
+                                    {touchBadge.label}
+                                  </span>
+                                </div>
                               </td>
                               <td className="py-3 pr-4 text-center align-middle">
                                 <div className="relative flex items-center justify-center">
@@ -2816,7 +3115,7 @@ export default function Home() {
                         placeholder="Search merchant or client..."
                         className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
                         value={search}
-                        onChange={(event) => setSearch(event.target.value)}
+                      onChange={(event) => updateCurrentFilters({ search: event.target.value })}
                       />
                       <div className="grid gap-3">
                         <label className="flex items-center gap-2 text-sm text-steel/70">
@@ -2824,7 +3123,7 @@ export default function Home() {
                             type="checkbox"
                             className="h-4 w-4 accent-accent"
                             checked={touchedOnly}
-                            onChange={(event) => setTouchedOnly(event.target.checked)}
+                            onChange={(event) => updateCurrentFilters({ touchedOnly: event.target.checked })}
                           />
                           Show worked today
                         </label>
@@ -2833,7 +3132,7 @@ export default function Home() {
                             type="checkbox"
                             className="h-4 w-4 accent-coral"
                             checked={needWorkOnly}
-                            onChange={(event) => setNeedWorkOnly(event.target.checked)}
+                            onChange={(event) => updateCurrentFilters({ needWorkOnly: event.target.checked })}
                           />
                           Follow-up due
                         </label>
@@ -2842,7 +3141,7 @@ export default function Home() {
                             type="checkbox"
                             className="h-4 w-4 accent-sky-500"
                             checked={dueWeekOnly}
-                            onChange={(event) => setDueWeekOnly(event.target.checked)}
+                            onChange={(event) => updateCurrentFilters({ dueWeekOnly: event.target.checked })}
                           />
                           Due this week
                         </label>
@@ -2851,7 +3150,7 @@ export default function Home() {
                             type="checkbox"
                             className="h-4 w-4 accent-emerald-500"
                             checked={increaseOnly}
-                            onChange={(event) => setIncreaseOnly(event.target.checked)}
+                            onChange={(event) => updateCurrentFilters({ increaseOnly: event.target.checked })}
                           />
                           Increase due
                         </label>
@@ -2860,7 +3159,7 @@ export default function Home() {
                             type="checkbox"
                             className="h-4 w-4 accent-slate-500"
                             checked={unsortedOnly}
-                            onChange={(event) => setUnsortedOnly(event.target.checked)}
+                            onChange={(event) => updateCurrentFilters({ unsortedOnly: event.target.checked })}
                           />
                           Unsorted only
                         </label>
@@ -3053,6 +3352,15 @@ export default function Home() {
                     Delete
                   </button>
                 )}
+                {editingOpportunity && (
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-steel/10 px-4 py-2 text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    onClick={() => markOpportunityWorked(editingOpportunity)}
+                  >
+                    Worked
+                  </button>
+                )}
                 <button
                   type="button"
                   className="rounded-2xl border border-steel/10 px-4 py-2 text-sm"
@@ -3060,8 +3368,12 @@ export default function Home() {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white">
-                  Save
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white"
+                  disabled={isOpportunitySaving}
+                >
+                  {isOpportunitySaving ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>
@@ -3142,12 +3454,18 @@ export default function Home() {
                 />
               </label>
               <label className="text-sm">
-                Status Column
-                <input
+                Collection Day
+                <select
                   name="status"
-                  defaultValue={editingMerchant?.status || statuses[0] || "Unsorted"}
+                  defaultValue={editingMerchant?.status || "Unsorted"}
                   className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
-                />
+                >
+                  {statuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
               </label>
               <div className="text-sm md:col-span-2">
                 <p className="text-sm font-semibold">Tags</p>
@@ -3362,8 +3680,12 @@ export default function Home() {
                 <button type="button" id="cancelMerchant" className="rounded-2xl border border-steel/10 px-4 py-2 text-sm" onClick={closeMerchantModal}>
                   Cancel
                 </button>
-                <button type="submit" className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white">
-                  Save
+                <button
+                  type="submit"
+                  className="rounded-2xl bg-ink px-5 py-2 text-sm font-semibold text-white"
+                  disabled={isMerchantSaving}
+                >
+                  {isMerchantSaving ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>
@@ -3594,7 +3916,7 @@ export default function Home() {
                   placeholder="Search merchant or client..."
                   className="w-full rounded-2xl border border-steel/10 bg-white/80 px-4 py-2 text-sm focus:border-accent focus:outline-none"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => updateCurrentFilters({ search: event.target.value })}
                 />
                 <div className="flex flex-wrap gap-3 text-sm text-steel/70">
                   <label className="flex items-center gap-2">
@@ -3602,7 +3924,7 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-accent"
                       checked={touchedOnly}
-                      onChange={(event) => setTouchedOnly(event.target.checked)}
+                      onChange={(event) => updateCurrentFilters({ touchedOnly: event.target.checked })}
                     />
                     Show worked today
                   </label>
@@ -3611,7 +3933,7 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-coral"
                       checked={needWorkOnly}
-                      onChange={(event) => setNeedWorkOnly(event.target.checked)}
+                      onChange={(event) => updateCurrentFilters({ needWorkOnly: event.target.checked })}
                     />
                     Follow-up due
                   </label>
@@ -3620,7 +3942,7 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-sky-500"
                       checked={dueWeekOnly}
-                      onChange={(event) => setDueWeekOnly(event.target.checked)}
+                      onChange={(event) => updateCurrentFilters({ dueWeekOnly: event.target.checked })}
                     />
                     Due this week
                   </label>
@@ -3629,7 +3951,7 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-emerald-500"
                       checked={increaseOnly}
-                      onChange={(event) => setIncreaseOnly(event.target.checked)}
+                      onChange={(event) => updateCurrentFilters({ increaseOnly: event.target.checked })}
                     />
                     Increase due
                   </label>
@@ -3638,7 +3960,7 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-slate-500"
                       checked={unsortedOnly}
-                      onChange={(event) => setUnsortedOnly(event.target.checked)}
+                      onChange={(event) => updateCurrentFilters({ unsortedOnly: event.target.checked })}
                     />
                     Unsorted only
                   </label>
@@ -3668,7 +3990,12 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-emerald-500"
                       checked={priorityFilters.p0}
-                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p0: !prev.p0 }))}
+                      onChange={() =>
+                        updateCurrentFilters((current) => ({
+                          ...current,
+                          priorityFilters: { ...current.priorityFilters, p0: !current.priorityFilters.p0 },
+                        }))
+                      }
                     />
                     Priority 0 (0-14)
                   </label>
@@ -3677,7 +4004,12 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-sky-500"
                       checked={priorityFilters.p1}
-                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p1: !prev.p1 }))}
+                      onChange={() =>
+                        updateCurrentFilters((current) => ({
+                          ...current,
+                          priorityFilters: { ...current.priorityFilters, p1: !current.priorityFilters.p1 },
+                        }))
+                      }
                     />
                     Priority 1 (15-60)
                   </label>
@@ -3686,7 +4018,12 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-amber-500"
                       checked={priorityFilters.p2}
-                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p2: !prev.p2 }))}
+                      onChange={() =>
+                        updateCurrentFilters((current) => ({
+                          ...current,
+                          priorityFilters: { ...current.priorityFilters, p2: !current.priorityFilters.p2 },
+                        }))
+                      }
                     />
                     Priority 2 (61-179)
                   </label>
@@ -3695,7 +4032,12 @@ export default function Home() {
                       type="checkbox"
                       className="h-4 w-4 accent-rose-500"
                       checked={priorityFilters.p3}
-                      onChange={() => setPriorityFilters((prev) => ({ ...prev, p3: !prev.p3 }))}
+                      onChange={() =>
+                        updateCurrentFilters((current) => ({
+                          ...current,
+                          priorityFilters: { ...current.priorityFilters, p3: !current.priorityFilters.p3 },
+                        }))
+                      }
                     />
                     Priority 3 (180+)
                   </label>
