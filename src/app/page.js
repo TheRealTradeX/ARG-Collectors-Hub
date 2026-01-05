@@ -987,6 +987,7 @@ export default function Home({ initialView = "accounts" }) {
       stage: String(formData.get("stage") || "").trim() || OPPORTUNITY_STAGES[0],
       paymentStatus: String(formData.get("paymentStatus") || "").trim(),
       notes: String(formData.get("notes") || "").trim(),
+      accountId: String(formData.get("accountId") || "").trim(),
       tags: opportunityTagsDraft,
     };
 
@@ -997,7 +998,7 @@ export default function Home({ initialView = "accounts" }) {
 
     const record = {
       user_id: session.user.id,
-      account_id: editingOpportunity?.accountId || null,
+      account_id: payload.accountId || null,
       merchant: payload.merchant,
       client: payload.client,
       amount: payload.amount,
@@ -3257,6 +3258,25 @@ export default function Home({ initialView = "accounts" }) {
                       {stage}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                Linked Account
+                <select
+                  name="accountId"
+                  defaultValue={editingOpportunity?.accountId || ""}
+                  className="mt-1 w-full rounded-2xl border border-steel/10 bg-white/80 px-3 py-2"
+                >
+                  <option value="">Not linked</option>
+                  {merchants
+                    .slice()
+                    .sort((a, b) => a.merchant.localeCompare(b.merchant))
+                    .map((merchant) => (
+                      <option key={merchant.id} value={merchant.id}>
+                        {merchant.merchant}
+                        {merchant.client ? ` — ${merchant.client}` : ""}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label className="text-sm">
