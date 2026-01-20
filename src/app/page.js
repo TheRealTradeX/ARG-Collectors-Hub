@@ -30,6 +30,7 @@ import {
   isFollowUpOverdue,
   loadSidebarState,
   normalizeFrequency,
+  parseDate,
   parseCsvImport,
   parseMoney,
   persistSidebarState,
@@ -50,6 +51,19 @@ const downloadBlob = (content, filename) => {
   URL.revokeObjectURL(url);
 };
 
+const toLocalMiddayIso = (value) => {
+  if (!value) return null;
+  const parsed = parseDate(value);
+  if (!parsed) return null;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 12).toISOString();
+};
+
+const toLocalDateKey = (value) => {
+  if (!value) return "";
+  const parsed = parseDate(value);
+  return parsed ? toDateKey(parsed) : "";
+};
+
 const parseMonthKey = (value) => {
   const [yearRaw, monthRaw] = String(value || "").split("-");
   const year = Number.parseInt(yearRaw, 10);
@@ -66,8 +80,8 @@ const monthDiff = (startKey, endKey) => {
 };
 
 const monthKeyFromDate = (dateValue) => {
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) return "";
+  const date = parseDate(dateValue);
+  if (!date) return "";
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
@@ -338,7 +352,7 @@ export default function Home({ initialView = "accounts" }) {
       if (!paymentsByAccount[payment.account_id]) paymentsByAccount[payment.account_id] = [];
       paymentsByAccount[payment.account_id].push({
         id: payment.id,
-        date: payment.paid_date || "",
+        date: toLocalDateKey(payment.paid_date),
         amount: parseMoney(payment.amount),
       });
     });
@@ -355,7 +369,7 @@ export default function Home({ initialView = "accounts" }) {
       increaseDate: row.increase_date || "",
       notes: row.notes || "",
       addedDate: row.added_date || "",
-      lastTouched: row.last_worked_at ? row.last_worked_at.split("T")[0] : "",
+      lastTouched: row.last_worked_at ? toLocalDateKey(row.last_worked_at) : "",
       tags: normalizeTags(row.tags),
       payments: paymentsByAccount[row.id] || [],
     }));
@@ -665,7 +679,7 @@ export default function Home({ initialView = "accounts" }) {
 
   const monthTotal = useMemo(() => getMonthTotal(merchants, monthKey), [merchants, monthKey]);
   const paymentsToday = useMemo(() => getPaymentsToday(merchants), [merchants]);
-  const touchedCount = useMemo(() => getTouchedCount(merchants), [merchants]);
+  const touchedCount = useMemo(() => getTouchedCount(merchants), [merchants, ageTick]);
   const overdueCount = useMemo(() => merchants.filter((merchant) => isFollowUpOverdue(merchant)).length, [merchants, ageTick]);
   const dueWeekCount = useMemo(() => merchants.filter((merchant) => isDueThisWeek(merchant)).length, [merchants, ageTick]);
   const increaseCount = useMemo(
@@ -1295,18 +1309,28 @@ export default function Home({ initialView = "accounts" }) {
       increase_date: payload.increaseDate,
       notes: payload.notes,
       added_date: payload.addedDate,
-      last_worked_at: payload.lastTouched || new Date().toISOString(),
+      last_worked_at: toLocalMiddayIso(payload.lastTouched) || new Date().toISOString(),
       tags: payload.tags,
     };
 
     try {
       if (payload.id) {
         await supabase.from("accounts").update(record).eq("id", payload.id).eq("user_id", session.user.id);
-        await touchAccount(payload.id, "updated", `Updated ${payload.merchant}`);
+        await logHistory({
+          entityType: "account",
+          entityId: payload.id,
+          action: "updated",
+          details: `Updated ${payload.merchant}`,
+        });
       } else {
         const { data } = await supabase.from("accounts").insert([record]).select("id").single();
         if (data?.id) {
-          await touchAccount(data.id, "created", `Created ${payload.merchant}`);
+          await logHistory({
+            entityType: "account",
+            entityId: data.id,
+            action: "created",
+            details: `Created ${payload.merchant}`,
+          });
         }
       }
       await loadSupabaseData();
@@ -1534,11 +1558,7 @@ export default function Home({ initialView = "accounts" }) {
             return true;
           })
           .map((merchant) => ({
-          last_worked_at: (() => {
-            if (!merchant.lastTouched) return null;
-            const parsed = new Date(merchant.lastTouched);
-            return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-          })(),
+          last_worked_at: toLocalMiddayIso(merchant.lastTouched),
           user_id: session.user.id,
           merchant: merchant.merchant,
           client: merchant.client,

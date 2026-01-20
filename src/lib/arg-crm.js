@@ -198,7 +198,8 @@ const parseDate = (value) => {
       : getToday().getFullYear();
     return buildDate(year, month, day);
   }
-  return null;
+  const fallback = new Date(raw);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
 
 const formatDisplayDate = (date) => {
